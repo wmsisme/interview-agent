@@ -1,0 +1,8 @@
+dashscope>=1.23.9
+websocket-client
+pyaudio
+opencv-python
+pillow
+numpy
+aiohttp
+asyncio
