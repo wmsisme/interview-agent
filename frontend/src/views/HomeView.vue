@@ -234,11 +234,9 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useInterviewStore } from '@/stores/interview'
-import { useQwenInterviewStore } from '@/stores/qwen_interview'
 
 const router = useRouter()
 const interviewStore = useInterviewStore()
-const qwenInterviewStore = useQwenInterviewStore()
 
 const selectedPosition = ref<string>('')
 const loading = ref({

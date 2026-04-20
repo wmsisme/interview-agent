@@ -10,22 +10,6 @@ const router = createRouter({
       component: HomeView,
     },
     {
-      path: '/interview',
-      name: 'interview',
-      component: () => import('../views/InterviewView.vue'),
-      meta: {
-        requiresInterview: true
-      }
-    },
-    {
-      path: '/interview/qwen',
-      name: 'qwen-interview',
-      component: () => import('../views/QwenInterviewView.vue'),
-      meta: {
-        requiresInterview: true
-      }
-    },
-    {
       path: '/interview/video',
       name: 'video-interview',
       component: () => import('../views/VideoInterviewView.vue'),
