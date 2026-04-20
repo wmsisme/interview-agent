@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from ..models import db, InterviewRecord, QuestionAnswer
 from .llm_service import LLMService
-from .voice_service import VoiceService
 from .rag_service import RagService
 
 logger = logging.getLogger(__name__)
@@ -10,7 +9,6 @@ logger = logging.getLogger(__name__)
 class InterviewService:
     def __init__(self):
         self.llm_service = LLMService()
-        self.voice_service = VoiceService()
         self.rag_service = RagService()
         self.conversation_history = {}  # {interview_id: [messages]}
     
@@ -136,17 +134,9 @@ class InterviewService:
             raise
     
     def process_audio_answer(self, interview_id, question_id, audio_data):
-        try:
-            # 语音识别
-            recognized_text = self.voice_service.speech_to_text(audio_data)
-            logger.info(f"语音识别结果: {recognized_text}")
-            
-            # 处理文本回答
-            return self.process_answer(interview_id, question_id, recognized_text)
-            
-        except Exception as e:
-            logger.error(f"处理音频回答失败: {str(e)}")
-            raise
+        # 语音识别服务已移除，仅支持视频面试模式
+        # 在视频面试中，音频由Qwen-Omni实时模型直接处理
+        raise NotImplementedError("语音识别服务已移除。请使用视频面试模式，音频将由Qwen-Omni实时模型直接处理。")
 
     def get_interview_record(self, interview_id):
         """根据ID获取面试记录"""

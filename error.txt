@@ -1,108 +1,0 @@
-2026-04-18 09:52:33,107 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:33,116 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:33,117 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights:  89%|¨€¨€¨€¨€¨€¨€¨€¨€¨ | 349/391 [00:00<00:00, 3483.10it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 3502.11it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:33,783 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:33,783 - app.services.llm_service - INFO - LLM·þÎñÒÑ³õÊ¼»¯RAG·þÎñ£¬Ä£Ê½: local
-2026-04-18 09:52:33,868 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:33,873 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:33,873 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 4169.79it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:34,118 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:34,345 - app.services.pdf_service - INFO - ³É¹¦×¢²á×ÖÌå: Microsoft YaHei (msyh)
-2026-04-18 09:52:34,346 - app.services.pdf_service - INFO - PDF·þÎñÊ¹ÓÃ×ÖÌå: msyh
-2026-04-18 09:52:34,400 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:34,406 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:34,407 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights:  69%|¨€¨€¨€¨€¨€¨€¨‚   | 268/391 [00:00<00:00, 2655.51it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 2569.51it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:34,772 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:36,116 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:36,119 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:36,120 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 4669.20it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:36,376 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:36,376 - app.services.qwen_omni_service - INFO - RagIntegrationÒÑ³õÊ¼»¯RAG·þÎñ£¬Ä£Ê½: local
-2026-04-18 09:52:36,686 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:36,700 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:36,700 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 4961.45it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:37,285 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:37,285 - app.services.llm_service - INFO - LLM·þÎñÒÑ³õÊ¼»¯RAG·þÎñ£¬Ä£Ê½: local
-2026-04-18 09:52:37,329 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:37,333 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:37,334 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 5508.92it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:37,699 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:37,738 - app.services.rag_service - INFO - ±¾µØRAG·þÎñ³õÊ¼»¯³É¹¦, ChromaDBÂ·¾¶: D:\system\Desktop\ai_bot_2\chroma_db
-2026-04-18 09:52:37,741 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
-2026-04-18 09:52:37,742 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|¨€¨€¨€¨€¨€¨€¨€¨€¨€¨€| 391/391 [00:00<00:00, 5465.90it/s]
-[1mBertModel LOAD REPORT[0m from: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-Key                     | Status     |  | 
-------------------------+------------+--+-
-embeddings.position_ids | UNEXPECTED |  | 
-
-[3mNotes:
-- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
-2026-04-18 09:52:37,960 - app.services.rag_service - INFO - Ç¶ÈëÄ£ÐÍ¼ÓÔØ³É¹¦: D:\system\Desktop\ai_bot_2\models\bge-large-zh
-2026-04-18 09:52:37,961 - app.routes.websocket_video - INFO - RAG·þÎñÒÑ³õÊ¼»¯
-2026-04-18 09:52:37,961 - app.routes.websocket_video - INFO - ÊÓÆµWebSocketÂ·ÓÉÒÑ×¢²á: /ws/video
-2026-04-18 09:52:38,189 - sqlalchemy.engine.Engine - INFO - SELECT DATABASE()
-2026-04-18 09:52:38,191 - sqlalchemy.engine.Engine - INFO - [raw sql] {}
-2026-04-18 09:52:38,198 - sqlalchemy.engine.Engine - INFO - SELECT @@sql_mode
-2026-04-18 09:52:38,199 - sqlalchemy.engine.Engine - INFO - [raw sql] {}
-2026-04-18 09:52:38,203 - sqlalchemy.engine.Engine - INFO - SELECT @@lower_case_table_names
-2026-04-18 09:52:38,205 - sqlalchemy.engine.Engine - INFO - [raw sql] {}
-2026-04-18 09:52:38,208 - sqlalchemy.engine.Engine - INFO - BEGIN (implicit)
-2026-04-18 09:52:38,210 - sqlalchemy.engine.Engine - INFO - DESCRIBE `ai_interview`.`interview_record`
-2026-04-18 09:52:38,211 - sqlalchemy.engine.Engine - INFO - [raw sql] {}
-2026-04-18 09:52:38,220 - sqlalchemy.engine.Engine - INFO - DESCRIBE `ai_interview`.`qa_detail`
-2026-04-18 09:52:38,221 - sqlalchemy.engine.Engine - INFO - [raw sql] {}
-2026-04-18 09:52:38,226 - sqlalchemy.engine.Engine - INFO - DESCRIBE `ai_interview`.`user`
-2026-04-18 09:52:38,227 - sqlalchemy.engine.Engine - INFO - [raw sql] {}
-2026-04-18 09:52:38,233 - sqlalchemy.engine.Engine - INFO - COMMIT
-2026-04-18 09:52:38,237 - __main__ - INFO - Starting AI Interview Flask backend on 0.0.0.0:8083
-2026-04-18 09:52:38,237 - __main__ - INFO - Environment: development
-2026-04-18 09:52:38,238 - __main__ - INFO - Debug mode: True
