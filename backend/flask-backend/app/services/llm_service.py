@@ -22,10 +22,15 @@ class LLMService:
             try:
                 from .rag_service import RagService
                 self.rag_service = RagService()
-                logger.info(f"LLM服务已初始化RAG服务，模式: {self.rag_service.mode}")
+                if self.rag_service.enabled:
+                    logger.info(f"LLM服务已初始化RAG服务，模式: {self.rag_service.mode}")
+                else:
+                    logger.info("LLM服务检测到RAG已禁用，继续使用纯LLM模式")
             except Exception as e:
                 logger.error(f"初始化RAG服务失败: {e}")
                 self.rag_service = None
+        else:
+            logger.info("LLM服务以纯LLM模式启动，RAG_ENABLED=False")
         
     def generate_first_question(self, position: str) -> str:
         try:

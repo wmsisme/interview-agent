@@ -31,7 +31,21 @@
       <!-- 视频区域 -->
       <div class="video-area">
         <div class="video-preview">
-          <h3>您的摄像头预览</h3>
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">Live Preview</div>
+              <h3>您的摄像头预览</h3>
+            </div>
+            <div class="section-actions">
+              <el-button
+                plain
+                size="small"
+                @click="showDebugPanel = !showDebugPanel"
+              >
+                {{ showDebugPanel ? '收起控制面板' : '展开控制面板' }}
+              </el-button>
+            </div>
+          </div>
           <div v-if="mediaWarningText" class="media-warning">
             <el-alert
               :title="mediaWarningText"
@@ -127,7 +141,7 @@
             </div>
           </div>
 
-          <div class="debug-panel">
+          <div v-if="showDebugPanel" class="debug-panel">
             <div class="debug-header">调试信息</div>
             <div class="debug-grid">
               <div>安全上下文: {{ debugState.isSecureContext ? '是' : '否' }}</div>
@@ -154,7 +168,12 @@
         </div>
 
         <div class="video-status">
-          <h3>面试状态</h3>
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">Interview Status</div>
+              <h3>面试状态</h3>
+            </div>
+          </div>
           <div class="status-indicators">
             <div class="status-item">
               <el-icon :color="cameraActive ? '#67c23a' : '#909399'"><VideoCamera /></el-icon>
@@ -184,7 +203,13 @@
 
       <!-- 对话历史区域 -->
       <div class="chat-history">
-        <h3>对话历史</h3>
+        <div class="section-head">
+          <div>
+            <div class="section-eyebrow">Conversation</div>
+            <h3>对话历史</h3>
+          </div>
+          <el-tag type="info" effect="plain">{{ messages.length }} 条消息</el-tag>
+        </div>
         <div class="messages-container">
           <div v-for="(message, index) in messages" :key="index" class="message-item">
             <div class="message-sender">{{ message.role === 'ai' ? '面试官' : '您' }}</div>
@@ -249,6 +274,7 @@ const audioPlayer = ref<HTMLAudioElement>()
 const loading = ref(false)
 const finished = ref(false)
 const interviewStarted = ref(false)
+const showDebugPanel = ref(false)
 
 // 媒体状态
 const cameraActive = ref(false)
@@ -1220,22 +1246,32 @@ const cleanup = () => {
 
 <style scoped>
 .video-interview-view {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.2), transparent 32%),
+    linear-gradient(135deg, #153677 0%, #1f6feb 52%, #8fd3ff 100%);
 }
 
 .header {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   padding: 16px 24px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 30px rgba(10, 31, 68, 0.12);
+  backdrop-filter: blur(14px);
 }
 
 .header-content {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+.position {
+  font-size: 20px;
+  font-weight: 700;
+  color: #16325c;
 }
 
 .video-interview-container {
@@ -1254,15 +1290,41 @@ const cleanup = () => {
 }
 
 .video-preview {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 20px;
   padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.7);
 }
 
-.video-preview h3 {
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
-  color: #333;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-eyebrow {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b89b6;
+}
+
+.video-preview h3,
+.video-status h3,
+.chat-history h3 {
+  margin: 0;
+  color: #183153;
 }
 
 .media-warning {
@@ -1284,10 +1346,13 @@ const cleanup = () => {
 
 .local-video {
   width: 100%;
-  max-height: 360px;
-  border-radius: 8px;
+  min-height: 280px;
+  max-height: 420px;
+  border-radius: 16px;
   background: #000;
   margin-bottom: 16px;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .video-controls {
@@ -1295,6 +1360,7 @@ const cleanup = () => {
   gap: 12px;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .audio-hint {
@@ -1312,11 +1378,12 @@ const cleanup = () => {
 
 .debug-panel {
   margin-top: 16px;
-  padding: 12px;
-  background: #111827;
+  padding: 14px;
+  background: linear-gradient(180deg, #0f172a, #16233d);
   color: #e5e7eb;
-  border-radius: 8px;
+  border-radius: 14px;
   font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .debug-header {
@@ -1359,9 +1426,9 @@ const cleanup = () => {
 .device-selection {
   margin-bottom: 20px;
   padding: 16px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
+  background: linear-gradient(180deg, #f8fbff, #f1f7ff);
+  border-radius: 14px;
+  border: 1px solid #dbeafe;
 }
 
 .device-selector {
@@ -1413,15 +1480,16 @@ const cleanup = () => {
 }
 
 .video-status {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 20px;
   padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.7);
 }
 
 .status-indicators {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1430,15 +1498,19 @@ const cleanup = () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 8px;
+  min-height: 56px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #f8fbff, #eef5ff);
+  border-radius: 14px;
+  border: 1px solid #dbeafe;
+  color: #183153;
+  font-weight: 500;
 }
 
 .subtitle-display {
-  background: #f0f9ff;
-  border: 1px solid #91caff;
-  border-radius: 8px;
+  background: linear-gradient(180deg, #edf7ff, #f7fbff);
+  border: 1px solid #a8d1ff;
+  border-radius: 16px;
   padding: 16px;
   margin-top: 16px;
 }
@@ -1456,32 +1528,29 @@ const cleanup = () => {
 }
 
 .chat-history {
-  width: 400px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
+  width: 420px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 20px;
   padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   display: flex;
   flex-direction: column;
-}
-
-.chat-history h3 {
-  margin-bottom: 16px;
-  color: #333;
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
   padding-right: 8px;
+  min-height: 240px;
 }
 
 .message-item {
-  padding: 12px;
+  padding: 14px 16px;
   margin-bottom: 12px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  border-left: 4px solid #409eff;
+  background: linear-gradient(180deg, #f8fbff, #f2f7ff);
+  border-radius: 14px;
+  border: 1px solid #dbeafe;
 }
 
 .message-sender {
@@ -1515,15 +1584,71 @@ const cleanup = () => {
   align-items: center;
   justify-content: center;
   padding: 40px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   margin: 24px;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.7);
 }
 
 .start-hint {
   margin-top: 16px;
   color: #666;
   font-size: 14px;
+}
+
+@media (max-width: 1200px) {
+  .video-interview-container {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .chat-history {
+    width: 100%;
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 14px 16px;
+  }
+
+  .video-interview-container {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .video-preview,
+  .video-status,
+  .chat-history,
+  .start-interview-section {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .status-indicators {
+    grid-template-columns: 1fr;
+  }
+
+  .device-selector {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .device-label {
+    min-width: 0;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .local-video {
+    min-height: 220px;
+    max-height: 300px;
+  }
 }
 </style>

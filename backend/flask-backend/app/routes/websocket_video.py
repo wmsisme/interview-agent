@@ -11,6 +11,7 @@ from ..services.video_chat_service import (
 )
 from ..services.interview_service import InterviewService
 from ..services.rag_service import RagService
+from ..config.default import RAG_ENABLED
 
 logger = logging.getLogger(__name__)
 MEDIA_LOG_INTERVAL_SECONDS = 30.0
@@ -40,11 +41,17 @@ interview_service = InterviewService()
 
 # RAG服务
 rag_service = None
-try:
-    rag_service = RagService()
-    logger.info("RAG服务已初始化")
-except Exception as e:
-    logger.warning(f"初始化RAG服务失败: {e}")
+if RAG_ENABLED:
+    try:
+        rag_service = RagService()
+        if rag_service.enabled:
+            logger.info("RAG服务已初始化")
+        else:
+            logger.info("RAG服务未就绪，当前按禁用处理")
+    except Exception as e:
+        logger.warning(f"初始化RAG服务失败: {e}")
+else:
+    logger.info("RAG_ENABLED=False，跳过视频路由RAG初始化")
 
 
 class VideoInterviewWebSocketHandler:

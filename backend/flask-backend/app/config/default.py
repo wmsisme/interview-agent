@@ -23,10 +23,11 @@ SQLALCHEMY_ECHO = False
 SERVER_HOST = os.environ.get('SERVER_HOST', '0.0.0.0')
 SERVER_PORT = int(os.environ.get('SERVER_PORT', 8083))
 
-# RAG服务配置 - 默认启用RAG以增强面试专业性
+# RAG服务配置
+# 默认关闭本地RAG，避免在未准备好 torch/chroma/models 时阻塞本地开发启动。
 RAG_SERVICE_URL = os.environ.get('RAG_SERVICE_URL', 'http://localhost:8083')
 RAG_TOP_K = int(os.environ.get('RAG_TOP_K', 5))
-RAG_ENABLED = os.environ.get('RAG_ENABLED', 'true').lower() == 'true'
+RAG_ENABLED = os.environ.get('RAG_ENABLED', 'false').lower() == 'true'
 RAG_MODE = os.environ.get('RAG_MODE', 'local')  # 'local' 或 'http'
 
 # LLM配置 - 用于问题生成和评估（使用千问文本API）
