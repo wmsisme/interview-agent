@@ -49,6 +49,7 @@ backend*.log
 backend[0-9].log
 
 # Database files
+*.db
 *.sqlite
 *.sqlite3
 chroma_db/

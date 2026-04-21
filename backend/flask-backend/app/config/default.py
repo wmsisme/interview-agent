@@ -11,7 +11,11 @@ DB_NAME = os.environ.get('DB_NAME', 'ai_interview')
 DB_USER = os.environ.get('DB_USER', 'root')
 DB_PASSWORD = os.environ.get('DB_PASSWORD', '123456')
 
-SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4'
+DEFAULT_SQLITE_PATH = os.path.join(BASE_DIR, 'interview.db')
+SQLALCHEMY_DATABASE_URI = os.environ.get(
+    'SQLALCHEMY_DATABASE_URI',
+    f"sqlite:///{DEFAULT_SQLITE_PATH.replace(os.sep, '/')}"
+)
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 SQLALCHEMY_ECHO = False
 
@@ -40,8 +44,16 @@ EMBEDDING_MODEL_RELATIVE = os.environ.get('EMBEDDING_MODEL_PATH', '../../models/
 CHROMA_DB_PATH = os.path.abspath(os.path.join(BASE_DIR, CHROMA_DB_RELATIVE))
 EMBEDDING_MODEL_PATH = os.path.abspath(os.path.join(BASE_DIR, EMBEDDING_MODEL_RELATIVE))
 
+# Qwen-Omni配置
+QWEN_OMNI_API_KEY = os.environ.get('QWEN_OMNI_API_KEY', 'REMOVED_API_KEY')
+QWEN_OMNI_MODEL = os.environ.get('QWEN_OMNI_MODEL', 'qwen3.5-omni-plus-realtime')
+QWEN_OMNI_WS_URL = os.environ.get('QWEN_OMNI_WS_URL', 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime')
+QWEN_OMNI_VOICE = os.environ.get('QWEN_OMNI_VOICE', 'Ethan')
+QWEN_OMNI_ENABLED = os.environ.get('QWEN_OMNI_ENABLED', 'true').lower() == 'true'
+QWEN_OMNI_ENABLE_TURN_DETECTION = os.environ.get('QWEN_OMNI_ENABLE_TURN_DETECTION', 'false').lower() == 'true'
+
 # 视频聊天配置（基于Qwen-Omni-Realtime）- 核心视频AI面试服务
-VIDEO_CHAT_API_KEY = os.environ.get('VIDEO_CHAT_API_KEY', 'REMOVED_API_KEY')
+VIDEO_CHAT_API_KEY = os.environ.get('VIDEO_CHAT_API_KEY', QWEN_OMNI_API_KEY)
 VIDEO_CHAT_MODEL = os.environ.get('VIDEO_CHAT_MODEL', 'qwen3.5-omni-plus-realtime')
 VIDEO_CHAT_REGION = os.environ.get('VIDEO_CHAT_REGION', 'cn')  # cn: 北京, intl: 新加坡
 VIDEO_CHAT_VOICE = os.environ.get('VIDEO_CHAT_VOICE', 'Ethan')

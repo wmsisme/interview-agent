@@ -1,11 +1,13 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
+    basicSsl(),
   ],
   resolve: {
     alias: {
@@ -21,6 +23,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path
+      },
+      '/socket.io': {
+        target: 'http://localhost:8083',
+        changeOrigin: true,
+        secure: false,
+        ws: true
       }
     }
   },
