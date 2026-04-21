@@ -1,18 +1,39 @@
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 from ..utils.response import success, error, bad_request
 from ..services.rag_service import RagService
+from ..config.default import RAG_ENABLED
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('rag', __name__, url_prefix='/api/rag')
-rag_service = RagService()
+rag_service = None
+
+if RAG_ENABLED:
+    try:
+        rag_service = RagService()
+        if rag_service.enabled:
+            logger.info("RAG路由已初始化")
+        else:
+            logger.info("RAG路由检测到RAG未就绪，当前按禁用处理")
+    except Exception as e:
+        logger.warning(f"RAG路由初始化失败: {e}")
+else:
+    logger.info("RAG_ENABLED=False，跳过RAG路由初始化")
+
+
+def _is_rag_available() -> bool:
+    return bool(rag_service and rag_service.enabled)
 
 @bp.route('/health', methods=['GET'])
 def health_check():
     """RAG服务健康检查"""
     try:
-        if not rag_service.enabled:
-            return error('RAG服务已禁用', status_code=503)
+        if not _is_rag_available():
+            return error('RAG服务已禁用', 503, {
+                'enabled': False,
+                'mode': 'disabled',
+                'status': 'disabled'
+            })
         
         health_info = {
             'enabled': rag_service.enabled,
@@ -28,8 +49,11 @@ def health_check():
 def get_collections():
     """获取所有集合"""
     try:
-        if not rag_service.enabled:
-            return error('RAG服务已禁用', status_code=503)
+        if not _is_rag_available():
+            return error('RAG服务已禁用', 503, {
+                'enabled': False,
+                'collections': []
+            })
         
         collections = []
         
@@ -68,8 +92,11 @@ def get_collections():
 def search():
     """检索相关文档"""
     try:
-        if not rag_service.enabled:
-            return error('RAG服务已禁用', status_code=503)
+        if not _is_rag_available():
+            return error('RAG服务已禁用', 503, {
+                'enabled': False,
+                'results': []
+            })
         
         data = request.get_json()
         if not data:
@@ -107,8 +134,12 @@ def search():
 def search_collection(collection_name):
     """检索指定集合的文档"""
     try:
-        if not rag_service.enabled:
-            return error('RAG服务已禁用', status_code=503)
+        if not _is_rag_available():
+            return error('RAG服务已禁用', 503, {
+                'enabled': False,
+                'collection': collection_name,
+                'results': []
+            })
         
         data = request.get_json()
         if not data:
@@ -145,8 +176,12 @@ def search_collection(collection_name):
 def test_search():
     """测试检索功能"""
     try:
-        if not rag_service.enabled:
-            return error('RAG服务已禁用', status_code=503)
+        if not _is_rag_available():
+            return error('RAG服务已禁用', 503, {
+                'rag_enabled': False,
+                'rag_mode': 'disabled',
+                'test_results': []
+            })
         
         # 测试查询
         test_queries = [
