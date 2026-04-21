@@ -3,6 +3,7 @@ import json
 import base64
 import threading
 import time
+from collections import deque
 from flask import request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from ..services.video_chat_service import (
@@ -12,9 +13,27 @@ from ..services.interview_service import InterviewService
 from ..services.rag_service import RagService
 
 logger = logging.getLogger(__name__)
+MEDIA_LOG_INTERVAL_SECONDS = 30.0
+INACTIVE_MEDIA_LOG_INTERVAL_SECONDS = 5.0
+VIDEO_NAMESPACE = '/ws/video'
 
 # 存储活动会话
 active_sessions = {}
+_last_media_log_times = {
+    'audio': 0.0,
+    'image': 0.0,
+    'inactive_audio': 0.0,
+    'inactive_image': 0.0,
+}
+
+
+def _should_log_media(kind: str) -> bool:
+    now = time.time()
+    last_logged_at = _last_media_log_times.get(kind, 0.0)
+    if now - last_logged_at >= MEDIA_LOG_INTERVAL_SECONDS:
+        _last_media_log_times[kind] = now
+        return True
+    return False
 
 # 面试服务
 interview_service = InterviewService()
@@ -44,6 +63,39 @@ class VideoInterviewWebSocketHandler:
         # 音频缓冲
         self.audio_buffer = bytearray()
         self.last_audio_time = 0
+        self.pending_events = deque()
+        self.pending_events_lock = threading.Lock()
+
+    def _emit_to_client(self, event_name: str, payload: dict | str):
+        """向当前Socket客户端定向发送事件。"""
+        def _emit():
+            self.socketio.emit(
+                event_name,
+                payload,
+                to=self.session_id,
+                namespace=VIDEO_NAMESPACE,
+            )
+
+        self.socketio.start_background_task(_emit)
+
+    def _queue_event_to_client(self, event_name: str, payload: dict | str):
+        with self.pending_events_lock:
+            self.pending_events.append((event_name, payload))
+
+    def flush_pending_events(self):
+        queued_items = []
+        with self.pending_events_lock:
+            while self.pending_events:
+                queued_items.append(self.pending_events.popleft())
+
+        for event_name, payload in queued_items:
+            logger.info(f"[WebSocket] 冲刷排队事件到前端: session={self.session_id}, event={event_name}")
+            self.socketio.emit(
+                event_name,
+                payload,
+                to=self.session_id,
+                namespace=VIDEO_NAMESPACE,
+            )
         
     def start_interview(self, data: dict):
         """开始视频面试"""
@@ -141,7 +193,11 @@ class VideoInterviewWebSocketHandler:
     def handle_audio(self, audio_data: bytes):
         """处理音频数据"""
         if not self.is_active or not self.video_session:
-            raise Exception("会话未激活")
+            if _should_log_media('inactive_audio'):
+                logger.warning(
+                    f"[WebSocket] 音频数据到达过早，已忽略: session={self.session_id}, bytes={len(audio_data)}"
+                )
+            return
         
         try:
             # 检查音频数据格式
@@ -151,6 +207,7 @@ class VideoInterviewWebSocketHandler:
             # 发送音频到视频会话
             self.video_session.send_audio(audio_data)
             self.last_audio_time = time.time()
+            self.flush_pending_events()
             
             # 记录到音频缓冲区（用于可能的后续处理）
             self.audio_buffer.extend(audio_data)
@@ -162,7 +219,11 @@ class VideoInterviewWebSocketHandler:
     def handle_video_frame(self, frame_data: bytes):
         """处理视频帧数据"""
         if not self.is_active or not self.video_session:
-            raise Exception("会话未激活")
+            if _should_log_media('inactive_image'):
+                logger.warning(
+                    f"[WebSocket] 视频帧到达过早，已忽略: session={self.session_id}, bytes={len(frame_data)}"
+                )
+            return
         
         try:
             # 发送视频帧到视频会话
@@ -175,12 +236,16 @@ class VideoInterviewWebSocketHandler:
     def handle_image(self, image_base64: str):
         """处理图像数据（base64编码）"""
         if not self.is_active or not self.video_session:
-            raise Exception("会话未激活")
+            if _should_log_media('inactive_image'):
+                logger.warning(
+                    f"[WebSocket] 图像数据到达过早，已忽略: session={self.session_id}, chars={len(image_base64)}"
+                )
+            return
         
         try:
-            logger.info(f"[WebSocket] 发送图像到视频会话: session={self.session_id}, data_size={len(image_base64)} chars")
             # 发送图像到视频会话
             self.video_session.send_image(image_base64)
+            self.flush_pending_events()
             
         except Exception as e:
             logger.error(f"处理图像数据失败: {str(e)}")
@@ -214,12 +279,14 @@ class VideoInterviewWebSocketHandler:
     def _handle_audio(self, audio_base64: str):
         """处理AI音频回复"""
         try:
-            # 发送音频数据到前端
-            self.socketio.emit('audio', {
+            logger.info(
+                f"[WebSocket] 向前端发送AI音频: session={self.session_id}, chars={len(audio_base64)}"
+            )
+            self._queue_event_to_client('audio', {
                 'type': 'ai_audio',
                 'data': audio_base64,
                 'sessionId': self.session_id
-            }, room=self.session_id)
+            })
             
         except Exception as e:
             logger.error(f"发送音频数据失败: {str(e)}")
@@ -227,12 +294,14 @@ class VideoInterviewWebSocketHandler:
     def _handle_text(self, text_chunk: str):
         """处理AI文本回复（字幕）"""
         try:
-            # 发送文本数据到前端
-            self.socketio.emit('text', {
+            logger.info(
+                f"[WebSocket] 向前端发送AI文本: session={self.session_id}, text={text_chunk[:40]!r}"
+            )
+            self._queue_event_to_client('text', {
                 'type': 'ai_text',
                 'data': text_chunk,
                 'sessionId': self.session_id
-            }, room=self.session_id)
+            })
             
         except Exception as e:
             logger.error(f"发送文本数据失败: {str(e)}")
@@ -240,9 +309,10 @@ class VideoInterviewWebSocketHandler:
     def _handle_response_done(self):
         """处理AI响应完成"""
         try:
-            self.socketio.emit('response_done', {
+            logger.info(f"[WebSocket] 向前端发送response_done: session={self.session_id}")
+            self._queue_event_to_client('response_done', {
                 'sessionId': self.session_id
-            }, room=self.session_id)
+            })
             
         except Exception as e:
             logger.error(f"发送响应完成事件失败: {str(e)}")
@@ -258,22 +328,31 @@ class VideoInterviewWebSocketHandler:
             if event_type == 'user_speech' and self.interview_id:
                 user_text = data.get('text', '')
                 if user_text:
-                    # 保存用户回答
-                    interview_service.save_answer(
-                        interview_id=self.interview_id,
-                        question_text="",  # 这里需要获取当前问题
-                        answer_text=user_text,
-                        audio_url=None
-                    )
+                    self._queue_event_to_client('user_text', {
+                        'type': 'user_text',
+                        'data': user_text,
+                        'sessionId': self.session_id
+                    })
+                    if hasattr(interview_service, 'save_answer'):
+                        interview_service.save_answer(
+                            interview_id=self.interview_id,
+                            question_text="",
+                            answer_text=user_text,
+                            audio_url=None
+                        )
+                    else:
+                        logger.info("[WebSocket] InterviewService未实现save_answer，跳过用户回答落库")
             
             elif event_type == 'ai_response' and self.interview_id:
                 ai_text = data.get('text', '')
                 if ai_text:
-                    # 保存AI问题
-                    interview_service.save_question(
-                        interview_id=self.interview_id,
-                        question_text=ai_text
-                    )
+                    if hasattr(interview_service, 'save_question'):
+                        interview_service.save_question(
+                            interview_id=self.interview_id,
+                            question_text=ai_text
+                        )
+                    else:
+                        logger.info("[WebSocket] InterviewService未实现save_question，跳过AI问题落库")
             
         except Exception as e:
             logger.error(f"处理面试事件失败: {str(e)}")
@@ -282,36 +361,39 @@ class VideoInterviewWebSocketHandler:
     def send(self, message: str):
         """发送消息到前端"""
         if hasattr(self, 'socketio') and self.socketio:
-            self.socketio.emit('message', message, room=self.session_id)
+            self._emit_to_client('message', message)
     
     def _send_started(self):
         """发送会话开始事件"""
-        self.socketio.emit('started', {
+        logger.info(f"[WebSocket] 向前端发送started: session={self.session_id}")
+        self._emit_to_client('started', {
             'sessionId': self.session_id,
             'interviewId': self.interview_id,
             'message': '视频面试已开始'
-        }, room=self.session_id)
+        })
     
     def _send_stopped(self):
         """发送会话停止事件"""
-        self.socketio.emit('stopped', {
+        logger.info(f"[WebSocket] 向前端发送stopped: session={self.session_id}")
+        self._emit_to_client('stopped', {
             'sessionId': self.session_id,
             'interviewId': self.interview_id,
             'message': '视频面试已结束'
-        }, room=self.session_id)
+        })
     
     def _send_error(self, error_msg: str):
         """发送错误事件"""
-        self.socketio.emit('error', {
+        logger.info(f"[WebSocket] 向前端发送error: session={self.session_id}, message={error_msg}")
+        self._emit_to_client('error', {
             'sessionId': self.session_id,
             'message': error_msg
-        }, room=self.session_id)
+        })
 
 
 def init_video_websocket(socketio: SocketIO):
     """初始化视频WebSocket路由"""
     
-    @socketio.on('connect', namespace='/ws/video')
+    @socketio.on('connect', namespace=VIDEO_NAMESPACE)
     def handle_connect():
         try:
             session_id = request.sid
@@ -323,8 +405,9 @@ def init_video_websocket(socketio: SocketIO):
             # 创建处理器
             handler = VideoInterviewWebSocketHandler(session_id, socketio)
             active_sessions[session_id] = handler
+            join_room(session_id)
             
-            logger.info(f"✅ [WebSocket] 会话处理器已创建: {session_id}")
+            logger.info(f"✅ [WebSocket] 会话处理器已创建并加入房间: {session_id}")
             
             emit('connected', {'sessionId': session_id})
             logger.info(f"✅ [WebSocket] 已发送connected事件给客户端: {session_id}")
@@ -335,7 +418,7 @@ def init_video_websocket(socketio: SocketIO):
             # 重新抛出异常，让Socket.IO处理
             raise
     
-    @socketio.on('disconnect', namespace='/ws/video')
+    @socketio.on('disconnect', namespace=VIDEO_NAMESPACE)
     def handle_disconnect():
         session_id = request.sid
         logger.info(f"视频客户端断开: {session_id}")
@@ -344,8 +427,9 @@ def init_video_websocket(socketio: SocketIO):
         if session_id in active_sessions:
             handler = active_sessions[session_id]
             handler.stop_interview()
+        leave_room(session_id)
     
-    @socketio.on('start_interview', namespace='/ws/video')
+    @socketio.on('start_interview', namespace=VIDEO_NAMESPACE)
     def handle_start_interview(data):
         try:
             session_id = request.sid
@@ -367,7 +451,7 @@ def init_video_websocket(socketio: SocketIO):
             logger.error(f"[WebSocket] 处理start_interview失败: {str(e)}", exc_info=True)
             emit('error', {'message': str(e)})
     
-    @socketio.on('audio', namespace='/ws/video')
+    @socketio.on('audio', namespace=VIDEO_NAMESPACE)
     def handle_audio(data):
         try:
             session_id = request.sid
@@ -384,13 +468,18 @@ def init_video_websocket(socketio: SocketIO):
             else:
                 # 二进制数据
                 audio_data = data
+
+            if _should_log_media('audio'):
+                logger.info(
+                    f"[WebSocket] 收到音频数据: session={session_id}, bytes={len(audio_data)}"
+                )
             
             handler.handle_audio(audio_data)
             
         except Exception as e:
             logger.error(f"处理音频数据失败: {str(e)}")
     
-    @socketio.on('video_frame', namespace='/ws/video')
+    @socketio.on('video_frame', namespace=VIDEO_NAMESPACE)
     def handle_video_frame(data):
         try:
             session_id = request.sid
@@ -413,12 +502,10 @@ def init_video_websocket(socketio: SocketIO):
         except Exception as e:
             logger.error(f"处理视频帧数据失败: {str(e)}")
     
-    @socketio.on('image', namespace='/ws/video')
+    @socketio.on('image', namespace=VIDEO_NAMESPACE)
     def handle_image(data):
         try:
             session_id = request.sid
-            logger.info(f"[WebSocket] 收到图像数据: session={session_id}, data_type={type(data).__name__}")
-            
             if session_id not in active_sessions:
                 emit('error', {'message': 'Session not found'})
                 return
@@ -427,18 +514,16 @@ def init_video_websocket(socketio: SocketIO):
             
             # data应该是base64编码的图像字符串
             if isinstance(data, str):
-                logger.info(f"[WebSocket] 图像数据大小: {len(data)} chars")
                 handler.handle_image(data)
             else:
                 # 如果是二进制数据，转换为base64
-                logger.info(f"[WebSocket] 图像二进制数据大小: {len(data)} bytes")
                 image_base64 = base64.b64encode(data).decode('utf-8')
                 handler.handle_image(image_base64)
             
         except Exception as e:
             logger.error(f"处理图像数据失败: {str(e)}")
     
-    @socketio.on('stop_interview', namespace='/ws/video')
+    @socketio.on('stop_interview', namespace=VIDEO_NAMESPACE)
     def handle_stop_interview(data):
         try:
             session_id = request.sid

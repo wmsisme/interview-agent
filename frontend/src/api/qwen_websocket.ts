@@ -1,6 +1,7 @@
 // Qwen-Omni WebSocket客户端（使用Socket.IO）
 // @ts-ignore
 import { io, Socket } from 'socket.io-client'
+import { SOCKET_HTTP_BASE_URL } from '@/config/runtime'
 
 export type QwenWebSocketMessage = {
   type: 'audio' | 'text' | 'started' | 'stopped' | 'error' | 'rag_results'
@@ -45,13 +46,12 @@ export class QwenWebSocket {
     this.callbacks = callbacks
     this.reconnectAttempts = 0
     
-    const socketUrl = `http://${import.meta.env.VITE_WS_BASE_URL?.replace('ws://', '').replace('wss://', '') || 'localhost:8083'}`
     const namespace = '/ws/qwen'
     
-    console.log(`连接Qwen-Omni Socket.IO: ${socketUrl}, 命名空间: ${namespace}`)
+    console.log(`连接Qwen-Omni Socket.IO: ${SOCKET_HTTP_BASE_URL}, 命名空间: ${namespace}`)
     
     try {
-      this.socket = io(`${socketUrl}${namespace}`, {
+      this.socket = io(`${SOCKET_HTTP_BASE_URL}${namespace}`, {
         path: '/socket.io',
         transports: ['websocket'],
         reconnection: false,

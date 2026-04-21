@@ -30,7 +30,14 @@ def main():
     # 运行应用
     if app.config.get('DEBUG', False):
         # 开发模式 - 使用SocketIO
-        socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+        socketio.run(
+            app,
+            host=host,
+            port=port,
+            debug=True,
+            use_reloader=True,
+            allow_unsafe_werkzeug=True
+        )
     else:
         # 生产模式 - 使用gunicorn with eventlet
         from gunicorn.app.base import BaseApplication

@@ -23,6 +23,23 @@ from ..config.default import (
 )
 
 logger = logging.getLogger(__name__)
+MEDIA_DETAIL_LOG_INTERVAL_SECONDS = 30.0
+_last_media_detail_log_times = {
+    'image_send': 0.0,
+    'warmup': 0.0,
+}
+MANUAL_TURN_SILENCE_SECONDS = 1.1
+MANUAL_TURN_MIN_SPEECH_SECONDS = 0.55
+PCM_SPEECH_THRESHOLD = 700
+
+
+def _should_log_media_detail(kind: str) -> bool:
+    now = time.time()
+    last_logged_at = _last_media_detail_log_times.get(kind, 0.0)
+    if now - last_logged_at >= MEDIA_DETAIL_LOG_INTERVAL_SECONDS:
+        _last_media_detail_log_times[kind] = now
+        return True
+    return False
 
 # 设置DashScope API密钥
 dashscope.api_key = VIDEO_CHAT_API_KEY
@@ -48,6 +65,7 @@ class VideoChatCallback(OmniRealtimeCallback):
         self.last_response_text = ""
         self.connected_event = None  # 用于等待连接建立的Event对象
         self.response_received = False  # 跟踪是否收到response.created事件
+        self.last_response_text = ""
         
     def on_open(self):
         logger.info(f"✅ [VideoChat] 连接成功建立: {self.session_id}")
@@ -201,11 +219,21 @@ class VideoChatCallback(OmniRealtimeCallback):
                 # 音频转文字增量
                 text_delta = event.get('delta', '')
                 self.last_response_text += text_delta
+                if self.on_text_callback:
+                    self.on_text_callback(text_delta)
+                if self.websocket_handler:
+                    self.websocket_handler.send(json.dumps({
+                        'type': 'text',
+                        'data': text_delta
+                    }))
                 
             elif event_type == 'response.audio_transcript.done':
                 # 音频转文字完成
                 full_text = event.get('transcript', '')
                 logger.info(f"🗣️ [VideoChat] AI回复文本: {full_text}")
+                if full_text and self.on_text_callback and not self.last_response_text:
+                    self.on_text_callback(full_text)
+                self.last_response_text = ""
                 if self.on_interview_event_callback:
                     self.on_interview_event_callback('ai_response', {'text': full_text})
                     
@@ -291,6 +319,13 @@ class VideoInterviewSession:
         self.video_thread = None
         self.stop_video = threading.Event()
         self.audio_sent = False  # 跟踪是否已发送音频帧
+        self.startup_warmup_thread = None
+        self.stop_startup_warmup = threading.Event()
+        self.initial_response_requested = False
+        self.last_user_response_request_at = 0.0
+        self.manual_turn_active = False
+        self.manual_turn_started_at = 0.0
+        self.manual_turn_last_voice_at = 0.0
         
         # RAG集成
         self.rag_integration = None
@@ -362,25 +397,29 @@ class VideoInterviewSession:
             logger.info(f"  - output_modalities: [AUDIO, TEXT]")
             logger.info(f"  - voice: Ethan")
             logger.info(f"  - instructions: {instructions}")
-            logger.info(f"  - enable_turn_detection: True (启用VAD模式，等待用户说话)")
+            logger.info(f"  - enable_turn_detection: False (主动开场模式)")
             
-            # 更新会话配置 - 启用VAD模式，等待用户说话
+            # 更新会话配置 - 禁用VAD，让AI先开场
             update_params = {
                 'output_modalities': [MultiModality.AUDIO, MultiModality.TEXT],
                 'voice': 'Ethan',
                 'instructions': instructions,
-                'enable_turn_detection': True  # 启用VAD模式
+                'enable_turn_detection': False,
+                'input_audio_format': AudioFormat.PCM_16000HZ_MONO_16BIT,
+                'output_audio_format': AudioFormat.PCM_24000HZ_MONO_16BIT,
+                'smooth_output': True,
+                'enable_input_audio_transcription': True,
+                'enable_output_audio_transcription': True
             }
             logger.info(f"📤 [VideoChat] 发送更新会话参数: {json.dumps(update_params, ensure_ascii=False, default=str)}")
             
             self.conversation.update_session(**update_params)
-            logger.info(f"✅ [VideoChat] 会话配置更新完成（启用VAD模式）")
+            logger.info(f"✅ [VideoChat] 会话配置更新完成（主动开场模式）")
             
             logger.info(f"✅ [VideoChat] 面试官会话已配置: {self.session_id}, 岗位: {self.position}")
             
-            # VAD模式下不需要发送初始音频帧，等待前端发送音频数据
             self.audio_sent = False
-            logger.info(f"ℹ️ [VideoChat] VAD模式已启用，等待前端发送音频数据...")
+            logger.info(f"ℹ️ [VideoChat] 会话已配置，启动后将发送初始静音帧触发首轮响应")
             
         except Exception as e:
             logger.error(f"❌ [VideoChat] 配置会话失败: {str(e)}")
@@ -432,8 +471,169 @@ class VideoInterviewSession:
         self.is_active = True
         logger.info(f"✅ [VideoChat] 会话已激活: {self.session_id}, is_active={self.is_active}")
         
-        # VAD模式下不需要调用commit()，等待前端发送音频数据
-        logger.info(f"ℹ️ [VideoChat] VAD模式已启用，等待前端发送音频数据...")
+        if not self.audio_sent:
+            try:
+                empty_audio = b'\x00' * 320  # 20ms静音帧
+                audio_base64 = base64.b64encode(empty_audio).decode('utf-8')
+                self.conversation.append_audio(audio_base64)
+                self.audio_sent = True
+                logger.info(f"✅ [VideoChat] 已发送初始静音帧，触发AI主动开场")
+            except Exception as e:
+                logger.warning(f"⚠️ [VideoChat] 发送初始静音帧失败: {e}")
+
+        self._request_initial_response()
+        self._start_startup_warmup()
+
+    def _request_initial_response(self):
+        """在关闭VAD的模式下，显式提交输入并要求模型开始响应。"""
+        if self.initial_response_requested:
+            return
+        if not self.conversation or not self.is_active:
+            return
+
+        try:
+            logger.info("🚀 [VideoChat] 显式提交初始输入缓冲区")
+            self.conversation.commit()
+            logger.info("🚀 [VideoChat] 显式请求模型生成首轮回复")
+            self.conversation.create_response(
+                output_modalities=[MultiModality.AUDIO, MultiModality.TEXT]
+            )
+            self.initial_response_requested = True
+            logger.info("✅ [VideoChat] 首轮response.create已发送")
+        except Exception as e:
+            logger.warning(f"⚠️ [VideoChat] 显式触发首轮回复失败: {e}")
+
+    def _start_startup_warmup(self):
+        """在会话启动后的短窗口内持续发送静音帧，逼近测试脚本行为。"""
+        if self.startup_warmup_thread and self.startup_warmup_thread.is_alive():
+            return
+
+        self.stop_startup_warmup.clear()
+
+        def _worker():
+            max_duration_seconds = 6.0
+            interval_seconds = 0.2
+            start_time = time.time()
+            frames_sent = 0
+            logger.info("🔄 [VideoChat] 启动静音预热线程")
+
+            while not self.stop_startup_warmup.is_set():
+                if not self.conversation or not self.is_active:
+                    break
+
+                if self.callback and getattr(self.callback, 'response_received', False):
+                    logger.info("✅ [VideoChat] 已收到response.created，停止静音预热")
+                    break
+
+                if time.time() - start_time >= max_duration_seconds:
+                    logger.info("⏹️ [VideoChat] 静音预热超时结束")
+                    break
+
+                try:
+                    empty_audio = b'\x00' * 320
+                    audio_base64 = base64.b64encode(empty_audio).decode('utf-8')
+                    self.conversation.append_audio(audio_base64)
+                    frames_sent += 1
+                    if frames_sent == 1 or (frames_sent % 5 == 0 and _should_log_media_detail('warmup')):
+                        logger.info(f"🎤 [VideoChat] 预热静音帧已发送: {frames_sent}")
+                except Exception as e:
+                    logger.warning(f"⚠️ [VideoChat] 预热静音帧发送失败: {e}")
+                    break
+
+                time.sleep(interval_seconds)
+
+            logger.info(f"✅ [VideoChat] 静音预热线程结束，共发送{frames_sent}帧")
+
+        self.startup_warmup_thread = threading.Thread(
+            target=_worker,
+            name=f"video-chat-warmup-{self.session_id}",
+            daemon=True
+        )
+        self.startup_warmup_thread.start()
+
+    def trigger_followup_response(self, transcript: str = ""):
+        """在禁用VAD时，根据用户转写手动触发下一轮回复。"""
+        if not self.conversation or not self.is_active:
+            return
+
+        cleaned_text = (transcript or "").strip()
+        if not cleaned_text:
+            logger.info("ℹ️ [VideoChat] 用户转写为空，跳过后续response.create")
+            return
+
+        if cleaned_text in {"嗯", "嗯。", "呃", "呃。", "啊", "啊。"}:
+            logger.info(f"ℹ️ [VideoChat] 用户转写疑似静音误识别，跳过: {cleaned_text!r}")
+            return
+
+        now = time.time()
+        if now - self.last_user_response_request_at < 1.0:
+            logger.info("ℹ️ [VideoChat] response.create触发过于频繁，本次跳过")
+            return
+
+        try:
+            logger.info(f"🚀 [VideoChat] 为用户输入触发新一轮回复: {cleaned_text!r}")
+            self.conversation.commit()
+            self.conversation.create_response(
+                output_modalities=[MultiModality.AUDIO, MultiModality.TEXT]
+            )
+            self.last_user_response_request_at = now
+        except Exception as e:
+            logger.warning(f"⚠️ [VideoChat] 触发后续回复失败: {e}")
+
+    def _pcm_has_speech(self, audio_data: bytes) -> bool:
+        """非常粗略的语音活动检测，用于手动commit后续轮次。"""
+        if len(audio_data) < 2:
+            return False
+        pcm = np.frombuffer(audio_data, dtype=np.int16)
+        if pcm.size == 0:
+            return False
+        peak = int(np.max(np.abs(pcm)))
+        return peak >= PCM_SPEECH_THRESHOLD
+
+    def _maybe_commit_manual_turn(self, audio_data: bytes):
+        """在关闭VAD时，用简单静音检测切分用户后续发言。"""
+        if not self.conversation or not self.is_active:
+            return
+
+        now = time.time()
+        has_speech = self._pcm_has_speech(audio_data)
+
+        if has_speech:
+            if not self.manual_turn_active:
+                self.manual_turn_active = True
+                self.manual_turn_started_at = now
+                logger.info("🎙️ [VideoChat] 检测到用户开始说话")
+            self.manual_turn_last_voice_at = now
+            return
+
+        if not self.manual_turn_active:
+            return
+
+        speech_duration = self.manual_turn_last_voice_at - self.manual_turn_started_at
+        silence_duration = now - self.manual_turn_last_voice_at
+        if speech_duration < MANUAL_TURN_MIN_SPEECH_SECONDS:
+            return
+        if silence_duration < MANUAL_TURN_SILENCE_SECONDS:
+            return
+        if now - self.last_user_response_request_at < 1.0:
+            return
+
+        try:
+            logger.info(
+                f"🚀 [VideoChat] 手动检测到用户发言结束，提交下一轮输入: "
+                f"speech={speech_duration:.2f}s silence={silence_duration:.2f}s"
+            )
+            self.conversation.commit()
+            self.conversation.create_response(
+                output_modalities=[MultiModality.AUDIO, MultiModality.TEXT]
+            )
+            self.last_user_response_request_at = now
+        except Exception as e:
+            logger.warning(f"⚠️ [VideoChat] 手动提交用户发言失败: {e}")
+        finally:
+            self.manual_turn_active = False
+            self.manual_turn_started_at = 0.0
+            self.manual_turn_last_voice_at = 0.0
         
     def send_audio(self, audio_data: bytes):
         """发送音频数据
@@ -452,8 +652,7 @@ class VideoInterviewSession:
         self.conversation.append_audio(audio_base64)
         # 设置音频已发送标志
         self.audio_sent = True
-        # 注意：参考文件没有调用commit()，先注释掉
-        # self.conversation.commit()
+        self._maybe_commit_manual_turn(audio_data)
         
     def send_image(self, image_base64: str):
         """发送图像数据
@@ -475,22 +674,13 @@ class VideoInterviewSession:
                 logger.warning(f"⚠️ [VideoChat] 发送初始音频帧失败: {e}")
                 # 继续尝试发送图像，但可能失败
             
-        logger.info(f"🖼️ [VideoChat] 发送图像数据: size={len(image_base64)} chars")
         try:
             self.conversation.append_video(image_base64)
-            logger.info(f"✅ [VideoChat] 图像数据发送成功")
+            if _should_log_media_detail('image_send'):
+                logger.info(f"🖼️ [VideoChat] 图像数据发送正常: size={len(image_base64)} chars")
         except Exception as e:
             logger.error(f"❌ [VideoChat] 发送图像数据失败: {e}")
             raise
-        # 注意：测试文件没有调用commit()，我们也不调用
-        # 但记录图像发送后的时间，用于调试
-        if not hasattr(self, 'last_image_sent_time'):
-            self.last_image_sent_time = time.time()
-            logger.info(f"⏰ [VideoChat] 首次图像发送时间: {self.last_image_sent_time}")
-        else:
-            current_time = time.time()
-            time_since_first_image = current_time - self.last_image_sent_time
-            logger.info(f"⏰ [VideoChat] 距离首次图像发送已过去: {time_since_first_image:.2f}秒")
         
     def send_video_frame(self, frame_data: bytes):
         """发送视频帧数据
@@ -564,6 +754,12 @@ class VideoInterviewSession:
         
     def stop(self):
         """停止会话"""
+        self.stop_startup_warmup.set()
+        self.initial_response_requested = False
+        self.last_user_response_request_at = 0.0
+        self.manual_turn_active = False
+        self.manual_turn_started_at = 0.0
+        self.manual_turn_last_voice_at = 0.0
         if self.conversation:
             try:
                 self.conversation.stop()

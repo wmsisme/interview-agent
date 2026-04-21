@@ -25,7 +25,7 @@ def create_app():
     app.register_blueprint(rag.bp)
     
     # 初始化SocketIO
-    socketio.init_app(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+    socketio.init_app(app, cors_allowed_origins="*", logger=False, engineio_logger=False)
     
     # 初始化WebSocket路由（保持向后兼容）
     websocket.init_websocket(socketio)

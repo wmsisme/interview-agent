@@ -1,5 +1,6 @@
 import request from './request'
 import axios from 'axios'
+import { API_BASE_URL } from '@/config/runtime'
 
 /**
  * 文本转语音（使用新的POST API）
@@ -9,7 +10,7 @@ import axios from 'axios'
 export const textToSpeech = async (text: string): Promise<Blob> => {
   try {
     // 首先尝试使用新的POST API
-    const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/tts`, 
+    const response = await axios.post(`${API_BASE_URL}/tts`, 
       { text },
       {
         responseType: 'blob',
@@ -24,7 +25,7 @@ export const textToSpeech = async (text: string): Promise<Blob> => {
     console.warn('TTS POST API失败，尝试使用旧的GET API:', error)
     
     // 如果POST API失败，回退到旧的GET API
-    const audioUrl = `${import.meta.env.VITE_API_BASE_URL}/tts?text=${encodeURIComponent(text)}`
+    const audioUrl = `${API_BASE_URL}/tts?text=${encodeURIComponent(text)}`
     const response = await axios.get(audioUrl, { responseType: 'blob' })
     return response.data
   }
@@ -39,7 +40,7 @@ export const speechToText = async (audioBlob: Blob): Promise<string> => {
   const formData = new FormData()
   formData.append('audio', audioBlob, 'recording.webm')
   
-  const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/asr`, 
+  const response = await axios.post(`${API_BASE_URL}/asr`, 
     formData,
     {
       headers: {

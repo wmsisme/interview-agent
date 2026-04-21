@@ -2,17 +2,15 @@ import os
 import json
 import base64
 import logging
-import asyncio
 import threading
-import time
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional
 from dashscope.audio.qwen_omni import OmniRealtimeConversation, OmniRealtimeCallback
 from dashscope.audio.qwen_omni import MultiModality, AudioFormat
 import dashscope
 
 from ..config.default import (
     QWEN_OMNI_API_KEY, QWEN_OMNI_MODEL, QWEN_OMNI_WS_URL,
-    QWEN_OMNI_VOICE, QWEN_OMNI_ENABLED, RAG_SERVICE_URL,
+    QWEN_OMNI_VOICE, QWEN_OMNI_ENABLED, QWEN_OMNI_ENABLE_TURN_DETECTION, RAG_SERVICE_URL,
     RAG_ENABLED, RAG_TOP_K, RAG_MODE
 )
 
@@ -26,14 +24,18 @@ class QwenOmniCallback(OmniRealtimeCallback):
     """处理Qwen-Omni服务端返回事件的回调类"""
     
     def __init__(self, websocket_handler=None):
+        super().__init__()
         self.websocket_handler = websocket_handler
         self.on_audio_callback = None
         self.on_text_callback = None
         self.on_done_callback = None
         self.on_error_callback = None
+        self.connected_event = None
         
     def on_open(self):
         logger.info("[Qwen-Omni] 连接已建立")
+        if self.connected_event:
+            self.connected_event.set()
         
     def on_event(self, event):
         """处理模型返回的各类事件"""
@@ -51,8 +53,7 @@ class QwenOmniCallback(OmniRealtimeCallback):
                         "data": audio_base64
                     }))
                     
-            elif event_type == "response.text.delta":
-                # 文本增量数据（用于字幕显示）
+            elif event_type in ("response.text.delta", "response.audio_transcript.delta"):
                 text_chunk = event.get("delta", "")
                 if self.on_text_callback:
                     self.on_text_callback(text_chunk)
@@ -62,6 +63,10 @@ class QwenOmniCallback(OmniRealtimeCallback):
                         "data": text_chunk
                     }))
                     
+            elif event_type == "response.audio_transcript.done":
+                transcript = event.get("transcript", "")
+                if transcript and self.on_text_callback:
+                    self.on_text_callback(transcript)
             elif event_type == "response.done":
                 # 一次响应完成
                 logger.info("[Qwen-Omni] 响应完成")
@@ -93,6 +98,7 @@ class InterviewerSession:
         self.callback = None
         self.is_active = False
         self.audio_buffer = bytearray()
+        self.audio_initialized = False
         
     def create_conversation(self, callback: QwenOmniCallback):
         """创建Omni-Realtime会话"""
@@ -105,6 +111,10 @@ class InterviewerSession:
             callback=callback,
             url=QWEN_OMNI_WS_URL
         )
+        callback.connected_event = threading.Event()
+        self.conversation.connect()
+        if not callback.connected_event.wait(timeout=10):
+            raise TimeoutError("连接Qwen-Omni超时")
         return self.conversation
         
     def configure_interviewer(self):
@@ -116,18 +126,22 @@ class InterviewerSession:
         instructions = self._build_instructions()
         
         # 更新会话配置
-        self.conversation.update_session({
-            "output_modalities": [MultiModality.TEXT, MultiModality.AUDIO],  # 同时输出文本和音频
-            "voice": QWEN_OMNI_VOICE,
-            "instructions": instructions,
-            "enable_turn_detection": True,  # 开启VAD模式，自动检测语音起止
-            "input_audio_format": AudioFormat.PCM_16000HZ_MONO_16BIT,  # 输入音频格式
-            "output_audio_format": AudioFormat.PCM,  # 输出音频格式
-            "smooth_output": True,  # 获得更口语化的回复
-            "enable_input_audio_transcription": True  # 开启语音转文本，便于后端记录
-        })
-        
-        logger.info(f"[Qwen-Omni] 面试官会话已配置: {self.session_id}")
+        self.conversation.update_session(
+            output_modalities=[MultiModality.TEXT, MultiModality.AUDIO],
+            voice=QWEN_OMNI_VOICE,
+            instructions=instructions,
+            enable_turn_detection=QWEN_OMNI_ENABLE_TURN_DETECTION,
+            input_audio_format=AudioFormat.PCM_16000HZ_MONO_16BIT,
+            output_audio_format=AudioFormat.PCM_16000HZ_MONO_16BIT,
+            smooth_output=True,
+            enable_input_audio_transcription=True,
+            enable_output_audio_transcription=True
+        )
+
+        logger.info(
+            f"[Qwen-Omni] 面试官会话已配置: {self.session_id}, "
+            f"turn_detection={QWEN_OMNI_ENABLE_TURN_DETECTION}, voice={QWEN_OMNI_VOICE}"
+        )
         
     def _build_instructions(self) -> str:
         """构建面试官系统提示词"""
@@ -135,13 +149,16 @@ class InterviewerSession:
 你需要通过提问来评估候选人的技术能力和综合素质。
 
 面试原则：
-1. 开场先进行简短的自我介绍（不超过30秒），然后询问候选人准备好了没有。
-2. 根据候选人的简历和岗位要求，提出有针对性的技术问题。
-3. 问题应由浅入深，根据候选人的回答质量决定是否追问或转换话题。
-4. 控制每轮提问的长度，避免长篇大论，保持对话的自然节奏。
-5. 面试结束时，对候选人的表现给予简短鼓励，并告知后续流程。
+1. 会话建立后立即开始说话，不要等待候选人先开口。
+2. 开场先进行简短的自我介绍（不超过30秒），然后询问候选人准备好了没有。
+3. 如果候选人暂时沉默，也继续自然地主导面试并抛出第一个问题。
+4. 根据候选人的简历和岗位要求，提出有针对性的技术问题。
+5. 问题应由浅入深，根据候选人的回答质量决定是否追问或转换话题。
+6. 控制每轮提问的长度，避免长篇大论，保持对话的自然节奏。
+7. 面试结束时，对候选人的表现给予简短鼓励，并告知后续流程。
 
-请始终使用口语化的中文进行提问和回应，保持专业且亲切的语气。"""
+请始终使用口语化的中文进行提问和回应，保持专业且亲切的语气。
+现在请在会话开始后立刻完成自我介绍并发起第一个开场问题。"""
         
         # 添加岗位信息
         if self.job_info:
@@ -156,37 +173,50 @@ class InterviewerSession:
         return base_instructions
         
     def start(self):
-        """启动会话"""
+        """激活会话"""
         if not self.conversation:
             raise Exception("会话未创建")
-            
-        self.conversation.start()
         self.is_active = True
+        self._prime_conversation()
         logger.info(f"[Qwen-Omni] 会话已启动: {self.session_id}")
-        
+
+    def _prime_conversation(self):
+        """发送一帧静音，触发Realtime会话开始首轮响应。"""
+        if self.audio_initialized:
+            return
+
+        empty_audio = base64.b64encode(b"\x00" * 320).decode("utf-8")
+        self.conversation.append_audio(empty_audio)
+        self.audio_initialized = True
+        logger.info(f"[Qwen-Omni] 已发送初始静音帧以触发首轮响应: {self.session_id}")
+
     def send_audio(self, audio_data: bytes):
         """发送音频数据"""
         if not self.is_active or not self.conversation:
             raise Exception("会话未激活")
-            
-        self.conversation.send_audio(audio_data)
+
+        audio_base64 = base64.b64encode(audio_data).decode("utf-8")
+        self.conversation.append_audio(audio_base64)
+        self.audio_initialized = True
         
     def send_image(self, image_base64: str):
         """发送图像数据"""
         if not self.is_active or not self.conversation:
             raise Exception("会话未激活")
-            
-        self.conversation.send_image(image_base64)
+
+        if not self.audio_initialized:
+            self._prime_conversation()
+
+        self.conversation.append_video(image_base64)
         
     def stop(self):
         """停止会话"""
         if self.conversation:
             try:
-                self.conversation.stop()
-            except Exception as e:
-                logger.warning(f"停止会话时出错: {str(e)}")
-            finally:
                 self.conversation.close()
+            except Exception as e:
+                logger.warning(f"关闭会话时出错: {str(e)}")
+            finally:
                 self.is_active = False
                 logger.info(f"[Qwen-Omni] 会话已停止: {self.session_id}")
 

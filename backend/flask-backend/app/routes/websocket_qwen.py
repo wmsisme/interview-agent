@@ -11,6 +11,7 @@ from ..services.qwen_omni_service import (
 from ..services.voice_service import VoiceService
 
 logger = logging.getLogger(__name__)
+QWEN_NAMESPACE = '/ws/qwen'
 
 # RAG集成
 rag_integration = RagIntegration()
@@ -75,7 +76,7 @@ class QwenOmniInterviewSession:
     def send(self, message: str):
         """发送消息到前端"""
         if hasattr(self, 'socketio') and self.socketio:
-            self.socketio.emit('message', message, room=self.session_id)
+            self.socketio.emit('message', message, room=self.session_id, namespace=QWEN_NAMESPACE)
     
     def send_audio(self, audio_data: bytes):
         """发送音频到Qwen-Omni"""
@@ -115,7 +116,7 @@ class QwenOmniInterviewSession:
                 'type': 'audio',
                 'data': audio_base64,
                 'sessionId': self.session_id
-            }, room=self.session_id)
+            }, room=self.session_id, namespace=QWEN_NAMESPACE)
             
         except Exception as e:
             logger.error(f"处理音频回调失败: {str(e)}")
@@ -127,7 +128,7 @@ class QwenOmniInterviewSession:
                 'type': 'text',
                 'data': text_chunk,
                 'sessionId': self.session_id
-            }, room=self.session_id)
+            }, room=self.session_id, namespace=QWEN_NAMESPACE)
             
         except Exception as e:
             logger.error(f"处理文本回调失败: {str(e)}")
@@ -145,14 +146,14 @@ class QwenOmniInterviewSession:
         self.socketio.emit('started', {
             'sessionId': self.session_id,
             'message': '面试会话已开始'
-        }, room=self.session_id)
+        }, room=self.session_id, namespace=QWEN_NAMESPACE)
     
     def _send_error(self, error_msg: str):
         """发送错误事件"""
         self.socketio.emit('error', {
             'message': error_msg,
             'sessionId': self.session_id
-        }, room=self.session_id)
+        }, room=self.session_id, namespace=QWEN_NAMESPACE)
     
     def stop(self):
         """停止会话"""
@@ -171,11 +172,12 @@ class QwenOmniInterviewSession:
 def init_qwen_websocket(socketio: SocketIO):
     """初始化Qwen-Omni WebSocket路由"""
     
-    @socketio.on('connect', namespace='/ws/qwen')
+    @socketio.on('connect', namespace=QWEN_NAMESPACE)
     def handle_connect():
+        join_room(request.sid)
         logger.info(f"[Qwen-Omni] 客户端连接: {request.sid}")
     
-    @socketio.on('disconnect', namespace='/ws/qwen')
+    @socketio.on('disconnect', namespace=QWEN_NAMESPACE)
     def handle_disconnect():
         logger.info(f"[Qwen-Omni] 客户端断开: {request.sid}")
         
@@ -183,8 +185,9 @@ def init_qwen_websocket(socketio: SocketIO):
         if request.sid in active_sessions:
             session = active_sessions[request.sid]
             session.stop()
+        leave_room(request.sid)
     
-    @socketio.on('start_interview', namespace='/ws/qwen')
+    @socketio.on('start_interview', namespace=QWEN_NAMESPACE)
     def handle_start_interview(data):
         """开始面试会话"""
         try:
@@ -209,7 +212,7 @@ def init_qwen_websocket(socketio: SocketIO):
             logger.error(f"处理start_interview消息失败: {str(e)}")
             emit('error', {'message': str(e)})
     
-    @socketio.on('audio', namespace='/ws/qwen')
+    @socketio.on('audio', namespace=QWEN_NAMESPACE)
     def handle_audio(data):
         """处理音频数据"""
         try:
@@ -238,7 +241,7 @@ def init_qwen_websocket(socketio: SocketIO):
             logger.error(f"处理音频数据失败: {str(e)}")
             emit('error', {'message': str(e)})
     
-    @socketio.on('image', namespace='/ws/qwen')
+    @socketio.on('image', namespace=QWEN_NAMESPACE)
     def handle_image(data):
         """处理图像数据"""
         try:
@@ -269,7 +272,7 @@ def init_qwen_websocket(socketio: SocketIO):
             logger.error(f"处理图像数据失败: {str(e)}")
             emit('error', {'message': str(e)})
     
-    @socketio.on('stop_interview', namespace='/ws/qwen')
+    @socketio.on('stop_interview', namespace=QWEN_NAMESPACE)
     def handle_stop_interview():
         """停止面试会话"""
         try:
@@ -290,7 +293,7 @@ def init_qwen_websocket(socketio: SocketIO):
             logger.error(f"处理stop_interview消息失败: {str(e)}")
             emit('error', {'message': str(e)})
     
-    @socketio.on('rag_query', namespace='/ws/qwen')
+    @socketio.on('rag_query', namespace=QWEN_NAMESPACE)
     async def handle_rag_query(data):
         """处理RAG查询请求"""
         try:
