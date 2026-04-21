@@ -336,7 +336,7 @@ let mediaStreamingStarted = false
 // 音频处理
 let audioContext: AudioContext | null = null
 let audioSource: MediaStreamAudioSourceNode | null = null
-let audioProcessor: ScriptProcessorNode | null = null
+let audioProcessor: ScriptProcessorNode | AudioWorkletNode | null = null
 let audioInterval: number | null = null
 const aiAudioProcessor = getQwenAudioProcessor()
 const AUDIO_SAMPLE_RATE = 16000
@@ -703,7 +703,7 @@ const toggleMicrophone = () => {
 }
 
 // 音频流处理函数
-const startAudioStreaming = () => {
+const startAudioStreaming = async () => {
   if (!localStream || !videoSocket) {
     console.error('无法启动音频流：localStream或videoSocket不存在')
     return
@@ -734,49 +734,140 @@ const startAudioStreaming = () => {
     // 创建音频源节点
     audioSource = audioContext.createMediaStreamSource(localStream)
     
-    // 创建ScriptProcessorNode用于处理音频数据
-    audioProcessor = audioContext.createScriptProcessor(4096, 1, 1)
+    // 检查是否支持AudioWorklet
+    if (audioContext.audioWorklet) {
+      try {
+        console.log('使用AudioWorkletNode处理音频数据')
+        
+        // 创建内联的AudioWorklet处理器
+        const workletCode = `
+          class AudioProcessor extends AudioWorkletProcessor {
+            constructor() {
+              super()
+              this.port.onmessage = this.handleMessage.bind(this)
+            }
+            
+            handleMessage(event) {
+              // 可以接收配置消息
+            }
+            
+            process(inputs, outputs, parameters) {
+              const input = inputs[0]
+              if (!input || input.length === 0) {
+                return true
+              }
+              
+              const channelData = input[0]
+              const int16Array = new Int16Array(channelData.length)
+              let hasValidData = false
+              
+              for (let i = 0; i < channelData.length; i++) {
+                const sample = Math.max(-32768, Math.min(32767, Math.floor(channelData[i] * 32768)))
+                int16Array[i] = sample
+                if (sample !== 0) {
+                  hasValidData = true
+                }
+              }
+              
+              if (hasValidData) {
+                this.port.postMessage({
+                  type: 'audioData',
+                  data: int16Array.buffer,
+                  length: int16Array.length
+                }, [int16Array.buffer])
+              }
+              
+              return true
+            }
+          }
+          
+          registerProcessor('audio-processor', AudioProcessor)
+        `
+        
+        // 创建Blob URL并加载worklet
+        const blob = new Blob([workletCode], { type: 'application/javascript' })
+        const url = URL.createObjectURL(blob)
+        await audioContext.audioWorklet.addModule(url)
+        URL.revokeObjectURL(url)
+        
+        // 创建AudioWorkletNode
+        const workletNode = new AudioWorkletNode(audioContext, 'audio-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [1],
+          processorOptions: {
+            bufferSize: 4096
+          }
+        })
+        
+        // 处理来自worklet的音频数据
+        workletNode.port.onmessage = (event: MessageEvent) => {
+          if (event.data.type === 'audioData') {
+            const int16Array = new Int16Array(event.data.data)
+            
+            // 限制缓冲区大小，避免延迟累积
+            processAudioChunk(int16Array, 'AudioWorklet')
+          }
+        }
+        
+        audioProcessor = workletNode
+        
+        console.log('AudioWorkletNode创建成功')
+        
+      } catch (error) {
+        console.warn('AudioWorklet加载失败，回退到ScriptProcessorNode:', error)
+        // 回退到ScriptProcessorNode
+        createScriptProcessorNode()
+      }
+    } else {
+      console.warn('浏览器不支持AudioWorklet，使用ScriptProcessorNode（已弃用）')
+      createScriptProcessorNode()
+    }
     
-    // 音频处理回调
-    audioProcessor.onaudioprocess = (event: AudioProcessingEvent) => {
-      const input = event.inputBuffer.getChannelData(0)
-      
-      // 检查输入数据是否有效
-      if (input.length === 0) {
-        console.warn('音频输入数据为空')
+    // ScriptProcessorNode回退实现
+    function createScriptProcessorNode() {
+      if (!audioContext) {
+        console.error('audioContext未初始化')
         return
       }
+      audioProcessor = audioContext.createScriptProcessor(4096, 1, 1)
       
-      // 转换为Int16Array
-      const int16Array = new Int16Array(input.length)
-      let hasValidData = false
-      for (let i = 0; i < input.length; i++) {
-        const inputSample = input[i] ?? 0
-        const sample = Math.max(-32768, Math.min(32767, Math.floor(inputSample * 32768)))
-        int16Array[i] = sample
-        if (sample !== 0) {
-          hasValidData = true
-        }
-      }
-      
-      if (hasValidData) {
-        // 追加到缓冲区
-        const newBuffer = new Int16Array(audioBuffer.length + int16Array.length)
-        newBuffer.set(audioBuffer)
-        newBuffer.set(int16Array, audioBuffer.length)
-        audioBuffer = newBuffer
+      audioProcessor.onaudioprocess = (event: AudioProcessingEvent) => {
+        const input = event.inputBuffer.getChannelData(0)
         
-        // 调试日志：每10次回调记录一次
-        if (Math.random() < 0.1) {  // 10%概率记录，避免日志过多
-          console.log(`音频数据接收: ${input.length}个float32样本, 转换为${int16Array.length}个int16样本, 缓冲区总计: ${audioBuffer.length}样本`)
+        // 检查输入数据是否有效
+        if (input.length === 0) {
+          console.warn('音频输入数据为空')
+          return
         }
-      } else {
-        // 静音数据，可以发送静音帧或忽略
-        console.log('收到静音音频数据，忽略或发送静音帧')
+        
+        // 转换为Int16Array
+        const int16Array = new Int16Array(input.length)
+        let hasValidData = false
+        for (let i = 0; i < input.length; i++) {
+          const inputSample = input[i] ?? 0
+          const sample = Math.max(-32768, Math.min(32767, Math.floor(inputSample * 32768)))
+          int16Array[i] = sample
+          if (sample !== 0) {
+            hasValidData = true
+          }
+        }
+        
+        if (hasValidData) {
+          // 限制缓冲区大小，避免延迟累积
+          processAudioChunk(int16Array, 'ScriptProcessor')
+        } else {
+          // 静音数据，可以发送静音帧或忽略
+          console.log('收到静音音频数据，忽略或发送静音帧')
+        }
       }
     }
     
     // 连接音频节点
+    if (!audioSource || !audioProcessor || !audioContext) {
+      console.error('无法连接音频节点：音频节点未正确初始化')
+      return
+    }
     audioSource.connect(audioProcessor)
     audioProcessor.connect(audioContext.destination)
     
@@ -794,6 +885,49 @@ const startAudioStreaming = () => {
   }
 }
 
+// 处理音频块，限制缓冲区大小避免延迟累积
+const processAudioChunk = (int16Array: Int16Array, source: string) => {
+  // 限制缓冲区最大大小，避免延迟累积
+  const MAX_BUFFER_SAMPLES = AUDIO_CHUNK_SAMPLES * 8 // 最多缓存200ms的音频数据
+  
+  // 如果缓冲区过大，丢弃旧数据，保留最新的数据
+  if (audioBuffer.length > MAX_BUFFER_SAMPLES) {
+    const excessSamples = audioBuffer.length - MAX_BUFFER_SAMPLES
+    audioBuffer = audioBuffer.slice(excessSamples)
+    console.warn(`音频缓冲区过大(${audioBuffer.length + excessSamples}样本)，丢弃${excessSamples}个旧样本`)
+  }
+  
+  // 追加新数据到缓冲区
+  const newBuffer = new Int16Array(audioBuffer.length + int16Array.length)
+  newBuffer.set(audioBuffer)
+  newBuffer.set(int16Array, audioBuffer.length)
+  audioBuffer = newBuffer
+  
+  // 立即发送音频数据，而不是等待定时器，减少延迟
+  if (audioBuffer.length >= AUDIO_CHUNK_SAMPLES && videoSocket?.connected) {
+    // 提取一个音频块
+    const chunk = audioBuffer.slice(0, AUDIO_CHUNK_SAMPLES)
+    const sliceBuffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)
+    const byteArray = new Uint8Array(sliceBuffer)
+    
+    // 只有在AI没有说话时才发送用户语音
+    if (!isPlayingAudio.value && Date.now() >= aiSpeechBlockUntil) {
+      try {
+        videoSocket.emit('audio', byteArray.buffer)
+        // 从缓冲区移除已发送的数据
+        audioBuffer = audioBuffer.slice(AUDIO_CHUNK_SAMPLES)
+      } catch (error) {
+        console.warn(`实时发送音频失败(${source})，连接可能已关闭:`, error)
+      }
+    }
+  }
+  
+  // 调试日志：每10次回调记录一次
+  if (Math.random() < 0.1) {
+    console.log(`${source}音频数据: ${int16Array.length}个int16样本, 缓冲区总计: ${audioBuffer.length}样本`)
+  }
+}
+
 const sendAudioData = () => {
   if (!videoSocket || !videoSocket.connected) {
     return
@@ -802,11 +936,17 @@ const sendAudioData = () => {
   // AI说话时以及刚说完的一小段时间内都发静音，避免扬声器回采
   if (isPlayingAudio.value || Date.now() < aiSpeechBlockUntil) {
     const silentFrame = new Uint8Array(AUDIO_CHUNK_SIZE).fill(0)
-    videoSocket.emit('audio', silentFrame.buffer)
+    try {
+      videoSocket.emit('audio', silentFrame.buffer)
+      console.log(`发送静音帧: AI说话中或刚说完，保持连接`)
+    } catch (error) {
+      console.warn('发送静音帧失败，连接可能已关闭:', error)
+      handleSocketError()
+    }
     return
   }
   
-  // 如果缓冲区有足够的数据，发送一个音频块
+  // 如果缓冲区有足够的数据且没有在AI说话期间，发送一个音频块
   if (audioBuffer.length >= AUDIO_CHUNK_SAMPLES) {
     // 提取一个音频块 (AUDIO_CHUNK_SAMPLES个样本)
     const chunk = audioBuffer.slice(0, AUDIO_CHUNK_SAMPLES)
@@ -815,21 +955,30 @@ const sendAudioData = () => {
     const sliceBuffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)
     const byteArray = new Uint8Array(sliceBuffer)
     
-    console.log(`发送音频数据: ${byteArray.length}字节, 缓冲区剩余: ${audioBuffer.length - AUDIO_CHUNK_SAMPLES}样本`)
+    console.log(`定时器发送音频数据: ${byteArray.length}字节, 缓冲区剩余: ${audioBuffer.length - AUDIO_CHUNK_SAMPLES}样本`)
     
-    // 发送音频数据到WebSocket - 发送Uint8Array的缓冲区数据
-    videoSocket.emit('audio', byteArray.buffer)
-    
-    // 从缓冲区移除已发送的数据
-    audioBuffer = audioBuffer.slice(AUDIO_CHUNK_SAMPLES)
+    try {
+      // 发送音频数据到WebSocket - 发送Uint8Array的缓冲区数据
+      videoSocket.emit('audio', byteArray.buffer)
+      // 从缓冲区移除已发送的数据
+      audioBuffer = audioBuffer.slice(AUDIO_CHUNK_SAMPLES)
+    } catch (error) {
+      console.warn('发送音频数据失败，连接可能已关闭:', error)
+      handleSocketError()
+    }
   } else {
     // 缓冲区不足，发送静音帧以保持连接活跃
     // 800字节的静音帧 (25ms @ 16kHz, 16-bit mono)
     const silentFrame = new Uint8Array(AUDIO_CHUNK_SIZE).fill(0)
-    console.log(`发送静音帧: ${silentFrame.length}字节 (缓冲区不足: ${audioBuffer.length}/${AUDIO_CHUNK_SAMPLES}样本)`)
+    console.log(`发送静音帧: ${silentFrame.length}字节 (缓冲区不足: ${audioBuffer.length}/${AUDIO_CHUNK_SAMPLES}样本，保持连接活跃)`)
     
-    // 发送静音帧
-    videoSocket.emit('audio', silentFrame.buffer)
+    try {
+      // 发送静音帧
+      videoSocket.emit('audio', silentFrame.buffer)
+    } catch (error) {
+      console.warn('发送静音帧失败，连接可能已关闭:', error)
+      handleSocketError()
+    }
   }
 }
 
@@ -844,6 +993,10 @@ const stopAudioStreaming = () => {
   
   // 断开音频节点连接
   if (audioProcessor) {
+    // 如果是AudioWorkletNode，关闭端口
+    if (audioProcessor instanceof AudioWorkletNode) {
+      audioProcessor.port.close()
+    }
     audioProcessor.disconnect()
     audioProcessor = null
   }
@@ -913,7 +1066,11 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
     videoSocket = io(SOCKET_HTTP_BASE_URL + '/ws/video', {
       path: '/socket.io',
       transports: ['websocket'],
-      reconnection: false
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
     })
     
     let connected = false
@@ -990,9 +1147,41 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
       reject(error)
     })
     
-    videoSocket.on('disconnect', () => {
-      console.log('Socket.IO连接断开')
+    videoSocket.on('disconnect', (reason: string) => {
+      console.log(`Socket.IO连接断开: ${reason}`)
       videoConnected.value = false
+      mediaStreamingStarted = false
+      
+      // 停止媒体流，避免继续发送数据到已关闭的连接
+      stopAudioStreaming()
+      if (videoInterval) {
+        clearInterval(videoInterval)
+        videoInterval = null
+      }
+      
+      // 显示断开连接通知
+      ElMessage.warning(`连接已断开: ${reason}`)
+    })
+    
+    videoSocket.on('reconnect', (attemptNumber: number) => {
+      console.log(`Socket.IO重新连接成功，尝试次数: ${attemptNumber}`)
+      // 重新连接后，可能需要重新发送start_interview事件
+      if (videoSocket?.connected && interviewStarted.value) {
+        console.log('重新连接后重新发送start_interview事件')
+        videoSocket.emit('start_interview', {
+          interviewId,
+          position: interviewStore.position || 'java_backend'
+        })
+      }
+    })
+    
+    videoSocket.on('reconnect_error', (error: Error) => {
+      console.error('Socket.IO重新连接失败:', error)
+    })
+    
+    videoSocket.on('reconnect_failed', () => {
+      console.error('Socket.IO重新连接完全失败')
+      ElMessage.error('连接断开且无法重新连接，请刷新页面重试')
     })
 
     videoSocket.onAny((eventName: string, ...args: any[]) => {
@@ -1009,7 +1198,7 @@ const handleSocketMessage = (data: any) => {
     case 'audio':
       // 处理AI音频回复
       modelStatusText.value = '已收到AI音频'
-      aiSpeechBlockUntil = Date.now() + 1800
+      aiSpeechBlockUntil = Date.now() + 800
       pushDebugLog(`received ai audio chunk length=${(data.data || '').length}`)
       playAIAudio(data.data)
       break
@@ -1023,7 +1212,7 @@ const handleSocketMessage = (data: any) => {
     case 'response_done':
       // AI响应完成
       modelStatusText.value = '本轮响应完成'
-      aiSpeechBlockUntil = Date.now() + 2600
+      aiSpeechBlockUntil = Date.now() + 1200
       if (pendingAiTranscript.trim()) {
         addMessage('ai', pendingAiTranscript.trim())
         currentSubtitle.value = pendingAiTranscript.trim()
@@ -1226,6 +1415,22 @@ const goBack = () => {
   }
 }
 
+const handleSocketError = () => {
+  console.warn('处理WebSocket连接错误，停止音频流并清理资源')
+  // 停止音频流
+  stopAudioStreaming()
+  // 清除视频间隔
+  if (videoInterval) {
+    clearInterval(videoInterval)
+    videoInterval = null
+  }
+  // 标记连接已断开
+  videoConnected.value = false
+  mediaStreamingStarted = false
+  // 显示错误提示
+  ElMessage.warning('连接已断开，请重新开始面试')
+}
+
 const cleanup = () => {
   // 清理资源
   if (videoInterval) {
@@ -1346,12 +1551,11 @@ const cleanup = () => {
 
 .local-video {
   width: 100%;
-  min-height: 280px;
-  max-height: 420px;
+  aspect-ratio: 16/9;
   border-radius: 16px;
   background: #000;
   margin-bottom: 16px;
-  object-fit: cover;
+  object-fit: contain;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
@@ -1647,7 +1851,7 @@ const cleanup = () => {
   }
 
   .local-video {
-    min-height: 220px;
+    aspect-ratio: 16/9;
     max-height: 300px;
   }
 }

@@ -2,6 +2,7 @@
 import os
 import sys
 import logging
+from dotenv import load_dotenv
 from app import create_app, socketio
 
 # 配置日志
@@ -12,6 +13,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
+    # 加载环境变量
+    load_dotenv()
     # 设置环境变量
     if not os.environ.get('FLASK_ENV'):
         os.environ['FLASK_ENV'] = 'development'

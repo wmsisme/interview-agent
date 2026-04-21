@@ -21,37 +21,68 @@ class PDFService:
     
     def _register_chinese_fonts(self):
         """注册中文字体"""
-        # Windows系统常见中文字体
-        windows_fonts = [
-            ("msyh", "Microsoft YaHei", "C:\\Windows\\Fonts\\msyh.ttc"),
-            ("msyhbd", "Microsoft YaHei Bold", "C:\\Windows\\Fonts\\msyhbd.ttc"),
-            ("simhei", "SimHei", "C:\\Windows\\Fonts\\simhei.ttf"),
-            ("simsun", "SimSun", "C:\\Windows\\Fonts\\simsun.ttc"),
-            ("kaiti", "KaiTi", "C:\\Windows\\Fonts\\kaiti.ttf"),
-            ("fangsong", "FangSong", "C:\\Windows\\Fonts\\fangsong.ttf"),
-        ]
+        import platform
+        import os
+        
+        # 根据操作系统定义字体路径
+        system = platform.system()
+        font_candidates = []
+        
+        if system == 'Windows':
+            # Windows系统常见中文字体
+            font_candidates = [
+                ("msyh", "Microsoft YaHei", "C:\\Windows\\Fonts\\msyh.ttc"),
+                ("msyhbd", "Microsoft YaHei Bold", "C:\\Windows\\Fonts\\msyhbd.ttc"),
+                ("simhei", "SimHei", "C:\\Windows\\Fonts\\simhei.ttf"),
+                ("simsun", "SimSun", "C:\\Windows\\Fonts\\simsun.ttc"),
+                ("kaiti", "KaiTi", "C:\\Windows\\Fonts\\kaiti.ttf"),
+                ("fangsong", "FangSong", "C:\\Windows\\Fonts\\fangsong.ttf"),
+            ]
+        elif system == 'Linux':
+            # Linux系统常见中文字体路径
+            linux_font_paths = [
+                '/usr/share/fonts/truetype/microsoft/msyh.ttf',
+                '/usr/share/fonts/truetype/microsoft/msyhbd.ttf',
+                '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+                '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            ]
+            for font_path in linux_font_paths:
+                if os.path.exists(font_path):
+                    font_name = os.path.splitext(os.path.basename(font_path))[0]
+                    font_candidates.append((font_name, font_name, font_path))
+        elif system == 'Darwin':  # macOS
+            # macOS系统常见中文字体路径
+            mac_font_paths = [
+                '/System/Library/Fonts/PingFang.ttc',
+                '/System/Library/Fonts/STHeiti Light.ttc',
+                '/System/Library/Fonts/STHeiti Medium.ttc',
+                '/Library/Fonts/Microsoft/msyh.ttf',
+            ]
+            for font_path in mac_font_paths:
+                if os.path.exists(font_path):
+                    font_name = os.path.splitext(os.path.basename(font_path))[0]
+                    font_candidates.append((font_name, font_name, font_path))
         
         registered_font = None
         
-        for font_name, font_display_name, font_path in windows_fonts:
+        for font_name, font_display_name, font_path in font_candidates:
             try:
-                pdfmetrics.registerFont(TTFont(font_name, font_path))
-                logger.info(f"成功注册字体: {font_display_name} ({font_name})")
-                registered_font = font_name
-                break
+                if os.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont(font_name, font_path))
+                    logger.info(f"成功注册字体: {font_display_name} ({font_name})")
+                    registered_font = font_name
+                    break
+                else:
+                    logger.debug(f"字体文件不存在: {font_path}")
             except Exception as e:
                 logger.debug(f"无法注册字体 {font_display_name}: {str(e)}")
                 continue
         
-        # 如果找不到任何中文字体，尝试使用默认字体
+        # 如果找不到任何中文字体，使用ReportLab标准字体（Helvetica）
         if registered_font is None:
-            logger.warning("无法注册任何中文字体，将使用默认字体（可能导致中文显示问题）")
-            # 尝试注册ReportLab自带的字体
-            try:
-                pdfmetrics.registerFont(TTFont("Helvetica", "Helvetica"))
-                registered_font = "Helvetica"
-            except:
-                registered_font = "Helvetica"
+            logger.warning("无法注册任何中文字体，将使用标准字体Helvetica（可能导致中文显示问题）")
+            # Helvetica是PDF标准字体，不需要注册
+            registered_font = "Helvetica"
         
         # 设置默认字体
         self.chinese_font = registered_font
@@ -112,9 +143,11 @@ class PDFService:
             name='ReportBodyText',
             parent=self.styles['Normal'],
             fontName=self.chinese_font,
-            fontSize=10,
-            alignment=TA_JUSTIFY,
-            spaceAfter=8
+            fontSize=11,
+            alignment=TA_LEFT,
+            spaceAfter=10,
+            leading=14,  # 行间距
+            wordWrap='CJK'
         ))
         
         # 列表项样式
@@ -124,7 +157,8 @@ class PDFService:
             fontName=self.chinese_font,
             leftIndent=20,
             bulletIndent=10,
-            spaceAfter=5
+            spaceAfter=6,
+            leading=14  # 继承行间距
         ))
         
         # 分数样式
@@ -170,7 +204,8 @@ class PDFService:
                 rightMargin=72,
                 leftMargin=72,
                 topMargin=72,
-                bottomMargin=72
+                bottomMargin=72,
+                embedFonts=True
             )
             
             story = []
@@ -229,16 +264,16 @@ class PDFService:
             ["问题数量", f"{data.get('questionCount', 0)}个"],
         ]
         
-        info_table = Table(info_data, colWidths=[2*inch, 4*inch])
+        info_table = Table(info_data, colWidths=[2.2*inch, 4*inch])
         info_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), self.chinese_font),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
             ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
             ('ALIGN', (1, 0), (1, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f5f5')),
-            ('PADDING', (0, 0), (-1, -1), 8),
+            ('PADDING', (0, 0), (-1, -1), 10),
         ]))
         
         elements.append(Spacer(1, 1.5*inch))
@@ -269,7 +304,9 @@ class PDFService:
         # 评估文本
         evaluation = data.get('evaluation', '')
         if evaluation:
-            eval_para = Paragraph(f"<b>评估:</b> {evaluation}", self.styles['ReportBodyText'])
+            # 包装长文本以改善换行
+            wrapped_evaluation = self._wrap_chinese_text(evaluation, max_chars_per_line=40)
+            eval_para = Paragraph(f"<b>评估:</b> {wrapped_evaluation}", self.styles['ReportBodyText'])
             elements.append(eval_para)
         
         # 分数详情表格
@@ -283,10 +320,10 @@ class PDFService:
                 ["岗位匹配", f"{scores.get('match', 0):.1f}", self._get_rating(scores.get('match', 0))],
             ]
             
-            score_table = Table(score_data, colWidths=[2*inch, 1.5*inch, 2*inch])
+            score_table = Table(score_data, colWidths=[2.2*inch, 1.5*inch, 2*inch])
             score_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (-1, -1), self.chinese_font),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
@@ -295,7 +332,7 @@ class PDFService:
                 ('FONTWEIGHT', (0, 0), (-1, 0), 'BOLD'),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#fafafa')),
                 ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
-                ('PADDING', (0, 0), (-1, -1), 8),
+                ('PADDING', (0, 0), (-1, -1), 10),
             ]))
             
             elements.append(Spacer(1, 0.2*inch))
@@ -376,11 +413,15 @@ class PDFService:
                     elements.append(title_para)
                     
                     if description:
-                        desc_para = Paragraph(f"{description}", self.styles['ReportBodyText'])
+                        # 包装描述文本以改善换行
+                        wrapped_description = self._wrap_chinese_text(description, max_chars_per_line=50)
+                        desc_para = Paragraph(f"{wrapped_description}", self.styles['ReportBodyText'])
                         elements.append(desc_para)
                     
                     if resources:
-                        res_para = Paragraph(f"<font color='#1976d2'>推荐资源:</font> {resources}", 
+                        # 包装资源文本以改善换行
+                        wrapped_resources = self._wrap_chinese_text(resources, max_chars_per_line=50)
+                        res_para = Paragraph(f"<font color='#1976d2'>推荐资源:</font> {wrapped_resources}", 
                                             ParagraphStyle('Resource', parent=self.styles['ReportBodyText'], 
                                                          leftIndent=20, textColor=colors.HexColor('#424242')))
                         elements.append(res_para)
@@ -392,7 +433,8 @@ class PDFService:
                     elements.append(item)
         elif isinstance(suggestions, str):
             # 如果是字符串形式的建议
-            sugg_para = Paragraph(suggestions, self.styles['ReportBodyText'])
+            wrapped_suggestions = self._wrap_chinese_text(suggestions, max_chars_per_line=50)
+            sugg_para = Paragraph(wrapped_suggestions, self.styles['ReportBodyText'])
             elements.append(sugg_para)
         else:
             no_data = Paragraph("暂无提升建议", self.styles['ReportBodyText'])
@@ -424,7 +466,9 @@ class PDFService:
             # 回答
             answer = record.get('answer', '')
             if answer:
-                answer_para = Paragraph(f"<font color='#2e7d32'><b>您的回答:</b></font> {answer}", 
+                # 包装回答文本以改善换行
+                wrapped_answer = self._wrap_chinese_text(answer, max_chars_per_line=50)
+                answer_para = Paragraph(f"<font color='#2e7d32'><b>您的回答:</b></font> {wrapped_answer}", 
                                        ParagraphStyle('Answer', parent=self.styles['ReportBodyText'], 
                                                     leftIndent=20, backColor=colors.HexColor('#f1f8e9')))
                 elements.append(answer_para)
@@ -449,7 +493,9 @@ class PDFService:
             # 反馈
             feedback = record.get('feedback', '')
             if feedback:
-                feedback_para = Paragraph(f"<font color='#1565c0'><b>反馈:</b></font> {feedback}", 
+                # 包装反馈文本以改善换行
+                wrapped_feedback = self._wrap_chinese_text(feedback, max_chars_per_line=50)
+                feedback_para = Paragraph(f"<font color='#1565c0'><b>反馈:</b></font> {wrapped_feedback}", 
                                          ParagraphStyle('Feedback', parent=self.styles['ReportBodyText'], 
                                                       leftIndent=20, backColor=colors.HexColor('#e3f2fd')))
                 elements.append(feedback_para)
@@ -473,6 +519,52 @@ class PDFService:
             return dt.strftime('%Y年%m月%d日 %H:%M')
         except:
             return dt_str
+    
+    def _wrap_chinese_text(self, text, max_chars_per_line=None):
+        """
+        包装中文文本，改善换行
+        
+        Args:
+            text: 要包装的中文文本
+            max_chars_per_line: 每行最大字符数（None表示自动）
+        
+        Returns:
+            包装后的文本，包含<br/>标签以改善换行
+        """
+        if not text:
+            return text
+        
+        # 如果不需要包装，直接返回
+        if max_chars_per_line is None or len(text) <= max_chars_per_line:
+            return text
+        
+        import re
+        
+        # 常见中文标点符号
+        punctuation = r'[。！？；：，、]'
+        
+        # 第一步：在所有标点符号后添加<br/>标签
+        # 使用正向预查确保不会重复添加
+        wrapped = re.sub(f'({punctuation})(?!<br/>)', r'\1<br/>', text)
+        
+        # 第二步：在长段落中每10个字符后添加零宽度空格（换行机会）
+        # 只对没有标点的长段落进行处理
+        lines = wrapped.split('<br/>')
+        result_lines = []
+        
+        for line in lines:
+            # 如果一行没有标点且长度超过阈值，添加零宽度空格
+            if len(line) > 15 and not re.search(punctuation, line):
+                # 每10个字符后添加零宽度空格
+                chars = list(line)
+                for i in range(len(chars) - 1, 0, -1):
+                    if i % 10 == 0:
+                        chars.insert(i, '&#8203;')
+                line = ''.join(chars)
+            result_lines.append(line)
+        
+        # 重新组合，用<br/>连接所有行
+        return '<br/>'.join(result_lines)
     
     def _get_rating(self, score):
         """根据分数获取评级"""

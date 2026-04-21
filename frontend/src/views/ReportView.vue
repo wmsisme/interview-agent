@@ -401,7 +401,15 @@ const downloadReport = async () => {
     const response = await downloadReportPdf(parseInt(interviewId))
     
     // 创建Blob对象
-    const blob = new Blob([response.data], { type: 'application/pdf' })
+    let blob: Blob
+    const responseData = response.data
+    if (responseData instanceof Blob) {
+      // response.data已经是Blob对象
+      blob = responseData
+    } else {
+      // 回退到原始方法
+      blob = new Blob([responseData || response], { type: 'application/pdf' })
+    }
     
     // 创建下载链接
     const url = window.URL.createObjectURL(blob)

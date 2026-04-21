@@ -65,29 +65,37 @@ echo.
 :: Check MySQL connectivity
 echo Checking MySQL connectivity...
 where mysql >nul 2>&1
+if errorlevel 1 goto mysql_not_found
+
+echo Testing MySQL connection with default credentials...
+mysql --host=localhost --port=3306 --user=root --password=123456 --execute="SELECT 1;" > nul 2>&1
+if errorlevel 1 goto mysql_connect_failed
+
+echo [OK] MySQL connection successful
+REM Check if database exists
+mysql --host=localhost --port=3306 --user=root --password=123456 --execute="SHOW DATABASES LIKE 'ai_interview';" > "%TEMP%\mysql_check.tmp" 2>&1
+findstr "ai_interview" "%TEMP%\mysql_check.tmp" > nul
 if errorlevel 1 (
-    echo [WARNING] MySQL client not found in PATH
-    echo Database functionality may be limited
-    echo Install MySQL if needed for full functionality
+    echo [INFO] Database 'ai_interview' does not exist yet
+    echo It will be created when Flask backend starts
 ) else (
-    echo Testing MySQL connection with default credentials...
-    mysql --host=localhost --port=3306 --user=root --password=123456 --execute="SELECT 1;" > nul 2>&1
-    if errorlevel 1 (
-        echo [WARNING] Cannot connect to MySQL with default credentials (root/123456)
-        echo Please update database credentials in backend\flask-backend\.env if different
-        echo.
-    ) else (
-        echo [OK] MySQL connection successful
-        :: Check if database exists
-        mysql --host=localhost --port=3306 --user=root --password=123456 --execute="SHOW DATABASES LIKE 'ai_interview';" | findstr "ai_interview" > nul
-        if errorlevel 1 (
-            echo [INFO] Database 'ai_interview' does not exist yet
-            echo It will be created when Flask backend starts
-        ) else (
-            echo [OK] Database 'ai_interview' exists
-        )
-    )
+    echo [OK] Database 'ai_interview' exists
 )
+del "%TEMP%\mysql_check.tmp" >nul 2>&1
+goto mysql_check_done
+
+:mysql_not_found
+echo [WARNING] MySQL client not found in PATH
+echo Database functionality may be limited
+echo Install MySQL if needed for full functionality
+goto mysql_check_done
+
+:mysql_connect_failed
+echo [WARNING] Cannot connect to MySQL with default credentials (root/123456)
+echo Please update database credentials in backend\flask-backend\.env if different
+echo.
+
+:mysql_check_done
 
 :: Check .env file
 echo Checking Flask backend configuration...
