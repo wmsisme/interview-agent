@@ -2,7 +2,8 @@
 
 export class QwenAudioProcessor {
   private audioContext: AudioContext | null = null
-  private sampleRate = 16000 // Qwen-Omni要求16kHz
+  private sampleRate = 24000 // AI输出音频按24kHz播放更接近测试项目效果
+  private nextPlaybackTime = 0
   
   /**
    * 初始化音频处理器
@@ -154,6 +155,10 @@ export class QwenAudioProcessor {
     }
     
     try {
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume()
+      }
+
       // 1. 解码Base64
       const binary = window.atob(base64Data)
       const bytes = new Uint8Array(binary.length)
@@ -177,10 +182,20 @@ export class QwenAudioProcessor {
       const source = this.audioContext.createBufferSource()
       source.buffer = audioBuffer
       source.connect(this.audioContext.destination)
-      
+
+      const now = this.audioContext.currentTime
+      const startAt = Math.max(now, this.nextPlaybackTime)
+      this.nextPlaybackTime = startAt + audioBuffer.duration
+
       return new Promise((resolve) => {
-        source.onended = () => resolve()
-        source.start()
+        source.onended = () => {
+          const currentTime = this.audioContext?.currentTime ?? 0
+          if (this.nextPlaybackTime < currentTime) {
+            this.nextPlaybackTime = currentTime
+          }
+          resolve()
+        }
+        source.start(startAt)
       })
       
     } catch (error) {
@@ -261,6 +276,7 @@ export class QwenAudioProcessor {
       this.audioContext.close()
       this.audioContext = null
     }
+    this.nextPlaybackTime = 0
   }
 }
 

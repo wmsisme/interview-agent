@@ -1,5 +1,6 @@
 // @ts-ignore
 import { io, Socket } from 'socket.io-client'
+import { SOCKET_HTTP_BASE_URL } from '@/config/runtime'
 
 type WebSocketMessage = {
   type: 'start' | 'stop' | 'partial' | 'stopped' | 'started' | 'error'
@@ -20,8 +21,7 @@ export class VoiceWebSocket {
   connectAndStart(interviewId: number, questionId: number, callbacks: WebSocketCallbacks) {
     this.callbacks = callbacks
     
-    const socketUrl = `http://${import.meta.env.VITE_WS_BASE_URL.replace('ws://', '').replace('wss://', '')}`
-    this.socket = io(socketUrl, {
+    this.socket = io(SOCKET_HTTP_BASE_URL, {
       path: '/socket.io',
       transports: ['websocket'],
       reconnection: false

@@ -1,0 +1,8 @@
+{
+  "name": "interview-agent-dev",
+  "private": true,
+  "scripts": {
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./dev.ps1",
+    "dev:frontend": "npm --prefix frontend run dev"
+  }
+}

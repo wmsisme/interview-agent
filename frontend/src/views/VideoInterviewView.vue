@@ -32,7 +32,21 @@
       <div class="video-area">
         <div class="video-preview">
           <h3>您的摄像头预览</h3>
-          <video ref="localVideo" autoplay muted class="local-video"></video>
+          <div v-if="mediaWarningText" class="media-warning">
+            <el-alert
+              :title="mediaWarningText"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+          </div>
+          <div v-if="!cameraActive" class="permission-actions">
+            <el-button type="primary" plain @click="requestPermissionsAndRefresh" :loading="cameraLoading">
+              重新检测设备
+            </el-button>
+            <span class="permission-hint">页面会自动请求权限；如果列表没刷新，再点这里重试</span>
+          </div>
+          <video ref="localVideo" autoplay muted playsinline class="local-video"></video>
           
           <!-- 设备选择 -->
           <div v-if="!cameraActive" class="device-selection">
@@ -46,17 +60,16 @@
                   style="width: 200px"
                 >
                   <el-option
-                  v-for="device in videoDevices"
-                  :key="device.deviceId"
-                  :label="device.displayLabel"
-                  :value="device.deviceId"
-                  :class="device.isVirtual ? 'virtual-camera-option' : ''"
-                />
+                    v-for="device in videoDevices"
+                    :key="device.deviceId"
+                    :label="device.displayLabel"
+                    :value="device.deviceId"
+                  />
                 </el-select>
               </div>
               <div v-else class="device-empty">
                 <span class="empty-text">未检测到摄像头设备</span>
-                <el-button link size="small" @click="enumerateDevices">刷新</el-button>
+                <el-button link size="small" @click="requestPermissionsAndRefresh">检测并刷新</el-button>
               </div>
             </div>
             <div class="device-selector">
@@ -78,7 +91,7 @@
               </div>
               <div v-else class="device-empty">
                 <span class="empty-text">未检测到麦克风设备</span>
-                <el-button link size="small" @click="enumerateDevices">刷新</el-button>
+                <el-button link size="small" @click="requestPermissionsAndRefresh">检测并刷新</el-button>
               </div>
             </div>
           </div>
@@ -111,6 +124,31 @@
             <div class="audio-hint" v-if="microphoneActive">
               <el-icon><InfoFilled /></el-icon>
               <span>建议使用耳机以避免回音</span>
+            </div>
+          </div>
+
+          <div class="debug-panel">
+            <div class="debug-header">调试信息</div>
+            <div class="debug-grid">
+              <div>安全上下文: {{ debugState.isSecureContext ? '是' : '否' }}</div>
+              <div>协议: {{ debugState.protocol }}</div>
+              <div>摄像头权限: {{ debugState.cameraPermission }}</div>
+              <div>麦克风权限: {{ debugState.microphonePermission }}</div>
+              <div>视频设备数: {{ videoDevices.length }}</div>
+              <div>音频设备数: {{ audioDevices.length }}</div>
+              <div>videoWidth: {{ debugState.videoWidth }}</div>
+              <div>videoHeight: {{ debugState.videoHeight }}</div>
+              <div>video readyState: {{ debugState.videoReadyState }}</div>
+              <div>流轨道: {{ debugState.trackSummary || '无' }}</div>
+              <div>模型状态: {{ modelStatusText }}</div>
+            </div>
+            <div class="debug-devices" v-if="videoDevices.length || audioDevices.length">
+              <div v-for="device in rawDeviceDebug" :key="`${device.kind}-${device.deviceId}`" class="debug-device-row">
+                {{ device.kind }} | {{ device.label || '(empty)' }} | {{ device.deviceId }}
+              </div>
+            </div>
+            <div class="debug-log">
+              <div v-for="(entry, index) in debugLogs" :key="index" class="debug-log-line">{{ entry }}</div>
             </div>
           </div>
         </div>
@@ -192,14 +230,12 @@ import { useInterviewStore } from '@/stores/interview'
 import { useUserStore } from '@/stores/user'
 import type { InterviewMessage } from '@/stores/interview'
 import { io, Socket } from 'socket.io-client'
+import { SOCKET_HTTP_BASE_URL } from '@/config/runtime'
+import { getQwenAudioProcessor } from '@/utils/qwen_audio'
 
 // 自定义设备类型，扩展MediaDeviceInfo
 interface ExtendedMediaDeviceInfo extends MediaDeviceInfo {
   displayLabel: string
-  isVirtual?: boolean
-  isWebcam?: boolean
-  hasDetailedLabel?: boolean
-  unavailable?: boolean
 }
 
 const router = useRouter()
@@ -220,38 +256,75 @@ const microphoneActive = ref(false)
 const cameraLoading = ref(false)
 const videoConnected = ref(false)
 const isPlayingAudio = ref(false)
-const hasCameraPermission = ref(false)
-const hasMicrophonePermission = ref(false)
-const isFirstCameraRequest = ref(true)
 
 // 数据
 const currentSubtitle = ref('')
+const modelStatusText = ref('未开始')
 const messages = ref<InterviewMessage[]>([])
 const currentRound = ref(1)
+const debugLogs = ref<string[]>([])
+const debugState = ref({
+  isSecureContext: false,
+  protocol: '',
+  cameraPermission: 'unknown',
+  microphonePermission: 'unknown',
+  videoWidth: 0,
+  videoHeight: 0,
+  videoReadyState: 0,
+  trackSummary: ''
+})
+const mediaWarningText = computed(() => {
+  if (!window.isSecureContext) {
+    return '当前页面不是安全上下文。手机浏览器中的摄像头和麦克风通常需要 HTTPS。'
+  }
+
+  if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
+    return '当前浏览器不支持媒体设备接口。'
+  }
+
+  if (!videoDevices.value.length && !audioDevices.value.length) {
+    return '浏览器尚未暴露设备列表。页面会自动请求权限并刷新设备。'
+  }
+
+  return ''
+})
+const rawDeviceDebug = computed(() => [
+  ...videoDevices.value.map(device => ({
+    kind: device.kind,
+    label: device.label,
+    deviceId: device.deviceId
+  })),
+  ...audioDevices.value.map(device => ({
+    kind: device.kind,
+    label: device.label,
+    deviceId: device.deviceId
+  }))
+])
 
 // 媒体流
 let localStream: MediaStream | null = null
 let videoSocket: Socket | null = null
 let videoInterval: number | null = null
+let mediaStreamingStarted = false
 
 // 音频处理
 let audioContext: AudioContext | null = null
 let audioSource: MediaStreamAudioSourceNode | null = null
 let audioProcessor: ScriptProcessorNode | null = null
 let audioInterval: number | null = null
+const aiAudioProcessor = getQwenAudioProcessor()
 const AUDIO_SAMPLE_RATE = 16000
 const AUDIO_CHUNK_SIZE = 800
 const AUDIO_CHUNK_SAMPLES = AUDIO_CHUNK_SIZE / 2 // 400 samples (800 bytes / 2 bytes per sample)
 let audioBuffer = new Int16Array(0)
+let pendingAiTranscript = ''
+let aiSpeechBlockUntil = 0
 
 // 设备枚举
 const videoDevices = ref<ExtendedMediaDeviceInfo[]>([])
 const audioDevices = ref<ExtendedMediaDeviceInfo[]>([])
 const selectedVideoDeviceId = ref<string>('')
 const selectedAudioDeviceId = ref<string>('')
-
-// 不可用设备跟踪
-const unavailableDeviceIds = ref<Set<string>>(new Set())
 
 // 计算属性
 const positionName = computed(() => {
@@ -267,109 +340,81 @@ const positionName = computed(() => {
 
 // 生命周期
 onMounted(() => {
+  updateDebugState()
   // 枚举设备
   enumerateDevices()
   // 检查设备权限
   checkMediaPermissions()
+  // 在安全上下文中，自动按 WebRTC sample 的方式请求权限后再刷新设备列表
+  if (window.isSecureContext && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+    requestPermissionsAndRefresh(true)
+  }
+
+  if (localVideo.value) {
+    localVideo.value.onloadedmetadata = () => {
+      pushDebugLog(`video loadedmetadata ${localVideo.value?.videoWidth}x${localVideo.value?.videoHeight}`)
+      updateVideoDebug()
+    }
+    localVideo.value.oncanplay = () => {
+      pushDebugLog('video canplay')
+      updateVideoDebug()
+    }
+    localVideo.value.onplaying = () => {
+      pushDebugLog('video playing')
+      updateVideoDebug()
+    }
+    localVideo.value.onerror = () => {
+      pushDebugLog('video element error')
+      updateVideoDebug()
+    }
+  }
 })
 
 onUnmounted(() => {
   cleanup()
 })
 
-// 方法
-const markDeviceAsUnavailable = (deviceId: string) => {
-  if (deviceId) {
-    unavailableDeviceIds.value.add(deviceId)
-    console.warn(`设备标记为不可用: ${deviceId}`)
-  }
+const pushDebugLog = (message: string) => {
+  const timestamp = new Date().toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+  debugLogs.value.unshift(`[${timestamp}] ${message}`)
+  debugLogs.value = debugLogs.value.slice(0, 20)
+}
+
+const updateVideoDebug = () => {
+  debugState.value.videoWidth = localVideo.value?.videoWidth || 0
+  debugState.value.videoHeight = localVideo.value?.videoHeight || 0
+  debugState.value.videoReadyState = localVideo.value?.readyState || 0
+}
+
+const updateDebugState = () => {
+  debugState.value.isSecureContext = window.isSecureContext
+  debugState.value.protocol = window.location.protocol
+  updateVideoDebug()
 }
 
 const enumerateDevices = async () => {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
+    pushDebugLog(`enumerateDevices returned ${devices.length} items`)
     
-    // 处理视频设备
     const videoInputs = devices.filter(device => device.kind === 'videoinput')
     videoDevices.value = videoInputs.map((device, index) => {
-      // 检测是否为虚拟摄像头或不可用设备
-      const label = device.label || ''
-      const lowerLabel = label.toLowerCase()
-      
-      // 扩展的虚拟摄像头检测关键词
-      const virtualKeywords = [
-        'virtual', '虚拟', 'xiaomi', 'obs', 'manycam', 'vcam', 'screen', 'mirror',
-        'droidcam', 'ivcam', 'epoccam', 'camo', 'webcamoid', 'yawcam',
-        '虚拟相机', '虚拟摄像头', '屏幕捕获', '屏幕录制', 'desktop', 'monitor',
-        'capture', 'recorder', 'mirroring', 'simulated', 'fake', 'dummy'
-      ]
-      
-      // 网络摄像头常见标识（可能断开连接）
-      const webcamKeywords = [
-        'webcam', 'usb camera', 'usb video', 'integrated camera', 'built-in camera',
-        '网络摄像头', 'usb摄像', '摄像头', 'camera', 'hd camera', '720p', '1080p'
-      ]
-      
-      // 检测是否为虚拟摄像头
-      let isVirtual = false
-      for (const keyword of virtualKeywords) {
-        if (lowerLabel.includes(keyword.toLowerCase())) {
-          isVirtual = true
-          break
-        }
-      }
-      
-      // 检测是否为网络摄像头（可能断开连接）
-      let isWebcam = false
-      for (const keyword of webcamKeywords) {
-        if (lowerLabel.includes(keyword.toLowerCase())) {
-          isWebcam = true
-          break
-        }
-      }
-      
-      // 特殊处理：如果标签为空或只有默认标签，可能是权限未授予的设备
-      const hasDetailedLabel = Boolean(device.label && device.label.trim() !== '' && 
-                              !device.label.toLowerCase().includes('camera') &&
-                              !device.label.toLowerCase().includes('摄像头'))
-      
-      // 确保deviceId有值
       const deviceId = device.deviceId || `video-device-${index}`
-      
-      // 构建显示标签
-      let displayLabel = ''
-      if (device.label && device.label.trim() !== '') {
-        displayLabel = device.label
-        if (isVirtual) {
-          displayLabel += ' (虚拟摄像头)'
-        } else if (isWebcam) {
-          displayLabel += ' (网络摄像头)'
-        }
-      } else {
-        displayLabel = `摄像头 ${index + 1}`
-        if (isVirtual) {
-          displayLabel += ' (虚拟摄像头)'
-        } else if (isWebcam) {
-          displayLabel += ' (网络摄像头)'
-        }
-      }
       
       return {
         ...device,
         deviceId: deviceId,
         label: device.label || `摄像头 ${index + 1}`,
-        isVirtual: isVirtual,
-        isWebcam: isWebcam,
-        hasDetailedLabel: hasDetailedLabel,
-        unavailable: unavailableDeviceIds.value.has(deviceId),
-        displayLabel: displayLabel
+        displayLabel: device.label || `摄像头 ${index + 1}`
       }
     })
     
-    // 处理音频设备
     const audioInputs = devices.filter(device => device.kind === 'audioinput')
     audioDevices.value = audioInputs.map((device, index) => {
-      // 确保deviceId有值
       const deviceId = device.deviceId || `audio-device-${index}`
       
       return {
@@ -380,48 +425,10 @@ const enumerateDevices = async () => {
       }
     })
     
-    // 智能选择摄像头设备
     if (videoDevices.value.length > 0) {
-      const currentVideoSelected = selectedVideoDeviceId.value
-      const videoDeviceExists = videoDevices.value.some(device => device.deviceId === currentVideoSelected)
-      
-      if (!currentVideoSelected || !videoDeviceExists) {
-        // 按优先级选择最佳摄像头：
-        // 1. 有详细标签的非虚拟摄像头（最可能可用）
-        // 2. 有详细标签的摄像头
-        // 3. 非虚拟摄像头
-        // 4. 第一个可用的摄像头
-        
-        const preferredDevices = videoDevices.value.filter(device => 
-          device.hasDetailedLabel && !device.isVirtual && !device.unavailable
-        )
-        
-        if (preferredDevices.length > 0) {
-          selectedVideoDeviceId.value = preferredDevices[0]?.deviceId || ''
-          console.log('选择了有详细标签的非虚拟摄像头:', preferredDevices[0]?.label)
-        } else {
-          const detailedDevices = videoDevices.value.filter(device => device.hasDetailedLabel && !device.unavailable)
-          if (detailedDevices.length > 0) {
-            selectedVideoDeviceId.value = detailedDevices[0]?.deviceId || ''
-            console.log('选择了有详细标签的摄像头:', detailedDevices[0]?.label)
-          } else {
-            const nonVirtualDevices = videoDevices.value.filter(device => !device.isVirtual && !device.unavailable)
-            if (nonVirtualDevices.length > 0) {
-              selectedVideoDeviceId.value = nonVirtualDevices[0]?.deviceId || ''
-              console.log('选择了非虚拟摄像头:', nonVirtualDevices[0]?.label)
-            } else {
-              // 过滤可用设备（非不可用）
-              const availableDevices = videoDevices.value.filter(device => !device.unavailable)
-              if (availableDevices.length > 0) {
-                selectedVideoDeviceId.value = availableDevices[0]?.deviceId || ''
-                console.log('选择了第一个可用摄像头:', availableDevices[0]?.label)
-              } else {
-                selectedVideoDeviceId.value = ''
-                console.warn('没有可用的摄像头设备')
-              }
-            }
-          }
-        }
+      const videoDeviceExists = videoDevices.value.some(device => device.deviceId === selectedVideoDeviceId.value)
+      if (!selectedVideoDeviceId.value || !videoDeviceExists) {
+        selectedVideoDeviceId.value = videoDevices.value[0]?.deviceId || ''
       }
     } else {
       selectedVideoDeviceId.value = ''
@@ -439,39 +446,21 @@ const enumerateDevices = async () => {
     
     console.log('枚举到的视频设备:', videoDevices.value)
     console.log('枚举到的音频设备:', audioDevices.value)
-    
-    if (videoDevices.value.length > 0) {
-      console.log('视频设备详情:')
-      videoDevices.value.forEach((device, index) => {
-        const deviceId = device.deviceId || ''
-        const idDisplay = deviceId ? `${deviceId.substring(0, 20)}...` : '无ID'
-        console.log(`  ${index + 1}. ${device.displayLabel}`)
-        console.log(`     原始标签: "${device.label}"`)
-        console.log(`     设备ID: ${idDisplay}`)
-        console.log(`     虚拟摄像头: ${device.isVirtual ? '是' : '否'}`)
-        console.log(`     网络摄像头: ${device.isWebcam ? '是' : '否'}`)
-        console.log(`     详细标签: ${device.hasDetailedLabel ? '是' : '否'}`)
-        console.log(`     不可用: ${device.unavailable ? '是' : '否'}`)
-      })
-    }
-    
   } catch (error) {
     console.error('枚举设备失败:', error)
+    pushDebugLog(`enumerateDevices failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
 const checkMediaPermissions = async () => {
   try {
-    // 检查摄像头和麦克风权限（仅用于信息提示，不自动开启摄像头）
     const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName })
     const microphonePermission = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-    
-    hasCameraPermission.value = cameraPermission.state === 'granted'
-    hasMicrophonePermission.value = microphonePermission.state === 'granted'
-    
-    if (hasCameraPermission.value && hasMicrophonePermission.value) {
-      console.log('摄像头和麦克风权限已授予，等待用户手动开启设备')
-    } else if (cameraPermission.state === 'prompt' || microphonePermission.state === 'prompt') {
+    debugState.value.cameraPermission = cameraPermission.state
+    debugState.value.microphonePermission = microphonePermission.state
+    pushDebugLog(`permissions camera=${cameraPermission.state} microphone=${microphonePermission.state}`)
+
+    if (cameraPermission.state === 'prompt' || microphonePermission.state === 'prompt') {
       ElMessage.info('请授予摄像头和麦克风权限以开始视频面试')
     }
   } catch (error) {
@@ -479,104 +468,102 @@ const checkMediaPermissions = async () => {
   }
 }
 
+const requestPermissionsAndRefresh = async (silent = false) => {
+  if (cameraLoading.value) {
+    return
+  }
+
+  if (!window.isSecureContext) {
+    if (!silent) {
+      ElMessage.warning('当前页面不是 HTTPS，浏览器可能不会暴露摄像头和麦克风')
+    }
+    await enumerateDevices()
+    return
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    if (!silent) {
+      ElMessage.error('当前浏览器不支持媒体设备访问')
+    }
+    return
+  }
+
+  try {
+    cameraLoading.value = true
+    pushDebugLog('requestPermissionsAndRefresh started')
+    const getUserMediaWithTimeout = async (constraints: MediaStreamConstraints, label: string) => {
+      return await Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error(`${label}权限请求超时`)), 10000)
+        })
+      ])
+    }
+
+    const stopStream = (stream: MediaStream | null) => {
+      stream?.getTracks().forEach(track => track.stop())
+    }
+
+    try {
+      const videoStream = await getUserMediaWithTimeout({ video: true }, '摄像头')
+      pushDebugLog(`camera permission stream ok, tracks=${videoStream.getTracks().length}`)
+      stopStream(videoStream)
+    } finally {
+    }
+
+    try {
+      const audioStream = await getUserMediaWithTimeout({ audio: true }, '麦克风')
+      pushDebugLog(`microphone permission stream ok, tracks=${audioStream.getTracks().length}`)
+      stopStream(audioStream)
+    } finally {
+    }
+
+    await enumerateDevices()
+
+    if (videoDevices.value.length || audioDevices.value.length) {
+      if (!silent) {
+        ElMessage.success('设备权限已获取，列表已刷新')
+      }
+    } else {
+      if (!silent) {
+        ElMessage.warning('已获取权限，但浏览器仍未返回设备列表')
+      }
+    }
+  } catch (error) {
+    console.error('检测并授权设备失败:', error)
+    pushDebugLog(`requestPermissionsAndRefresh failed: ${error instanceof Error ? error.message : String(error)}`)
+    let errorMessage = '无法获取摄像头和麦克风权限'
+    if (error instanceof DOMException) {
+      if (error.name === 'NotAllowedError') {
+        errorMessage = '浏览器拒绝了摄像头或麦克风权限'
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = '浏览器没有找到可用的摄像头或麦克风'
+      } else {
+        errorMessage = `${error.name}: ${error.message}`
+      }
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    if (!silent) {
+      ElMessage.error(errorMessage)
+    }
+  } finally {
+    cameraLoading.value = false
+  }
+}
+
 const startCamera = async () => {
   try {
     cameraLoading.value = true
-    
-    // 第一步：停止任何现有的摄像头流
+    pushDebugLog(`startCamera selected video=${selectedVideoDeviceId.value || 'none'} audio=${selectedAudioDeviceId.value || 'none'}`)
+
     if (localStream) {
-      console.log('停止现有的摄像头流...')
       localStream.getTracks().forEach(track => {
-        console.log(`停止轨道: ${track.kind} (${track.id})`)
         track.stop()
       })
       localStream = null
     }
-    
-    console.log('开始摄像头请求，第一次请求状态:', isFirstCameraRequest.value)
-    console.log('当前权限状态 - 摄像头:', hasCameraPermission.value, '麦克风:', hasMicrophonePermission.value)
-    
-    // 如果是第一次请求或没有权限，先请求基本权限
-    if (isFirstCameraRequest.value || (!hasCameraPermission.value && !hasMicrophonePermission.value)) {
-      console.log('第一次请求权限或权限未授予，使用基本约束请求权限')
-      
-      // 基本约束 - 不指定设备ID，只请求权限
-      const basicConstraints: MediaStreamConstraints = {
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 30 }
-        },
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      }
-      
-      try {
-        console.log('发送基本权限请求约束:', JSON.stringify(basicConstraints, null, 2))
-        localStream = await navigator.mediaDevices.getUserMedia(basicConstraints)
-        console.log('权限请求成功，获取到基本媒体流')
-        
-        // 更新权限状态
-        hasCameraPermission.value = true
-        hasMicrophonePermission.value = true
-        isFirstCameraRequest.value = false
-        
-        // 立即停止这个临时流（我们只需要权限，不需要保持流开启）
-        localStream.getTracks().forEach(track => {
-          console.log(`停止临时权限获取轨道: ${track.kind} (${track.id})`)
-          track.stop()
-        })
-        localStream = null
-        
-        // 重新枚举设备（现在有权限了，可以获取完整设备标签）
-        await enumerateDevices()
-        
-        // 如果设备列表中有设备，自动选择第一个物理摄像头（如果有的话）
-        if (videoDevices.value.length > 0) {
-          // 优先选择物理摄像头
-          const physicalCamera = videoDevices.value.find(device => !device.isVirtual)
-          if (physicalCamera) {
-            selectedVideoDeviceId.value = physicalCamera.deviceId
-            console.log('自动选择第一个物理摄像头:', physicalCamera.label)
-          } else {
-            // 如果没有物理摄像头，选择第一个设备
-            selectedVideoDeviceId.value = videoDevices.value[0]?.deviceId || ''
-            console.log('自动选择第一个摄像头:', videoDevices.value[0]?.label)
-          }
-          
-          ElMessage.success('摄像头权限已获取，请选择您要使用的摄像头设备')
-        } else {
-          ElMessage.success('摄像头权限已获取，但未检测到摄像头设备')
-        }
-        
-        return // 第一次请求完成，等待用户选择设备
-        
-      } catch (permissionError) {
-        console.error('获取摄像头权限失败:', permissionError)
-        let errorMessage = '无法获取摄像头或麦克风权限'
-        if (permissionError instanceof DOMException) {
-          if (permissionError.name === 'NotAllowedError') {
-            errorMessage = '用户拒绝了摄像头或麦克风权限'
-          } else if (permissionError.name === 'NotFoundError') {
-            errorMessage = '未找到摄像头或麦克风设备'
-          }
-        }
-        ElMessage.error(errorMessage)
-        return
-      }
-    }
-    
-    // 如果不是第一次请求（已经有权限），检查设备选择
-    console.log('非第一次请求，检查设备选择...')
-    console.log('选择的视频设备ID:', selectedVideoDeviceId.value)
-    console.log('视频设备列表:', videoDevices.value)
-    
-    // 验证设备选择
+
     if (!selectedVideoDeviceId.value) {
       ElMessage.warning('请先选择摄像头设备')
       return
@@ -588,18 +575,17 @@ const startCamera = async () => {
       ElMessage.error('选择的摄像头设备不存在，请重新选择')
       return
     }
-    
-    console.log('选中的摄像头设备:', selectedVideoDevice.label, (selectedVideoDevice.isVirtual ? '(虚拟摄像头)' : '(物理摄像头)'))
-    
-    // 构建视频约束 - 使用选择的设备
+
     const videoConstraints: MediaTrackConstraints = {
       width: { ideal: 640 },
       height: { ideal: 480 },
-      frameRate: { ideal: 30 },
-      deviceId: { exact: selectedVideoDeviceId.value }  // 强制使用精确匹配
+      frameRate: { ideal: 30 }
     }
-    
-    // 构建音频约束
+
+    if (selectedVideoDeviceId.value) {
+      videoConstraints.deviceId = { exact: selectedVideoDeviceId.value }
+    }
+
     const audioConstraints: MediaTrackConstraints = {
       sampleRate: 16000,
       channelCount: 1,
@@ -607,99 +593,53 @@ const startCamera = async () => {
       noiseSuppression: true,
       autoGainControl: true
     }
-    
-    // 如果选择了麦克风，则指定麦克风设备
+
     if (selectedAudioDeviceId.value) {
       audioConstraints.deviceId = { exact: selectedAudioDeviceId.value }
-      console.log('使用指定的音频设备ID:', selectedAudioDeviceId.value)
     }
-    
+
     const constraints: MediaStreamConstraints = {
       video: videoConstraints,
       audio: audioConstraints
     }
-    
-    console.log('发送的媒体约束（使用选择的设备）:', JSON.stringify(constraints, null, 2))
-    
-    // 获取指定设备的媒体流
+
     localStream = await navigator.mediaDevices.getUserMedia(constraints)
-    
-    console.log('成功获取指定设备的媒体流:')
-    localStream.getTracks().forEach(track => {
-      console.log(`轨道: ${track.kind}, id: ${track.id}, enabled: ${track.enabled}, readyState: ${track.readyState}`)
-      console.log('轨道设置:', track.getSettings())
-    })
-    
-    // 验证只获取了一个视频轨道
-    const videoTracks = localStream.getVideoTracks()
-    if (videoTracks.length === 0) {
-      console.warn('警告：媒体流中没有视频轨道')
-      ElMessage.warning('摄像头已开启，但未检测到视频数据')
-    } else if (videoTracks.length > 1) {
-      console.warn(`警告：获取了${videoTracks.length}个视频轨道，可能开启了多个摄像头`)
-      // 如果意外获取了多个视频轨道，只保留第一个，停止其他的
-      for (let i = 1; i < videoTracks.length; i++) {
-        const extraTrack = videoTracks[i]
-        if (extraTrack) {
-          console.log(`停止多余视频轨道: ${extraTrack.id}`)
-          extraTrack.stop()
-        }
-      }
-    } else {
-      const mainVideoTrack = videoTracks[0]
-      if (mainVideoTrack) {
-        const settings = mainVideoTrack.getSettings()
-        console.log('成功获取单个视频轨道，设备ID:', settings?.deviceId || '未知')
-      }
-    }
-    
+    debugState.value.trackSummary = localStream.getTracks()
+      .map(track => `${track.kind}:${track.readyState}:${track.enabled ? 'on' : 'off'}`)
+      .join(', ')
+    pushDebugLog(`getUserMedia success ${debugState.value.trackSummary}`)
+
     if (localVideo.value) {
       localVideo.value.srcObject = localStream
-      console.log('视频元素已设置媒体流')
-    }
-    
-    cameraActive.value = true
-    microphoneActive.value = true
-    
-    // 检查视频轨道是否真的有数据
-    if (videoTracks.length > 0) {
-      const track = videoTracks[0]
-      if (track) {
-        console.log('视频轨道状态:', {
-          readyState: track.readyState,
-          enabled: track.enabled,
-          muted: track.muted,
-          settings: track.getSettings()
+      localVideo.value.muted = true
+      localVideo.value.playsInline = true
+      const playResult = localVideo.value.play()
+      if (playResult && typeof playResult.catch === 'function') {
+        playResult.catch((error: unknown) => {
+          pushDebugLog(`video.play failed: ${error instanceof Error ? error.message : String(error)}`)
         })
       }
     }
     
+    cameraActive.value = true
+    microphoneActive.value = true
+    updateVideoDebug()
     ElMessage.success('摄像头和麦克风已开启')
     
   } catch (error) {
     console.error('无法访问摄像头/麦克风:', error)
-    // 显示更详细的错误信息
+    pushDebugLog(`startCamera failed: ${error instanceof Error ? error.message : String(error)}`)
     let errorMessage = '无法访问摄像头或麦克风，请检查设备权限'
     if (error instanceof DOMException) {
       errorMessage = `设备访问错误: ${error.name} - ${error.message}`
       if (error.name === 'NotFoundError') {
-        errorMessage = `未找到摄像头设备: ${selectedVideoDeviceId.value}`
-        // 标记设备为不可用并清除选择
-        markDeviceAsUnavailable(selectedVideoDeviceId.value)
-        selectedVideoDeviceId.value = ''
-        // 重新枚举设备以更新列表
-        setTimeout(() => enumerateDevices(), 100)
+        errorMessage = `未找到摄像头设备: ${selectedVideoDeviceId.value || '未指定'}`
       } else if (error.name === 'NotAllowedError') {
         errorMessage = '用户拒绝了摄像头或麦克风权限'
       } else if (error.name === 'NotReadableError') {
         errorMessage = '摄像头或麦克风正被其他程序占用'
       } else if (error.name === 'OverconstrainedError') {
-        errorMessage = `无法满足摄像头要求。设备ID: ${selectedVideoDeviceId.value}`
-        // 标记设备为不可用并清除选择
-        markDeviceAsUnavailable(selectedVideoDeviceId.value)
-        selectedVideoDeviceId.value = ''
-        // 重新枚举设备以更新列表
-        setTimeout(() => enumerateDevices(), 100)
+        errorMessage = `无法满足摄像头要求。设备ID: ${selectedVideoDeviceId.value || '未指定'}`
       }
     }
     ElMessage.error(errorMessage)
@@ -719,6 +659,8 @@ const stopCamera = () => {
   if (localVideo.value) {
     localVideo.value.srcObject = null
   }
+  debugState.value.trackSummary = ''
+  updateVideoDebug()
   
   ElMessage.info('摄像头和麦克风已关闭')
 }
@@ -783,7 +725,8 @@ const startAudioStreaming = () => {
       const int16Array = new Int16Array(input.length)
       let hasValidData = false
       for (let i = 0; i < input.length; i++) {
-        const sample = Math.max(-32768, Math.min(32767, Math.floor(input[i] * 32768)))
+        const inputSample = input[i] ?? 0
+        const sample = Math.max(-32768, Math.min(32767, Math.floor(inputSample * 32768)))
         int16Array[i] = sample
         if (sample !== 0) {
           hasValidData = true
@@ -827,6 +770,13 @@ const startAudioStreaming = () => {
 
 const sendAudioData = () => {
   if (!videoSocket || !videoSocket.connected) {
+    return
+  }
+
+  // AI说话时以及刚说完的一小段时间内都发静音，避免扬声器回采
+  if (isPlayingAudio.value || Date.now() < aiSpeechBlockUntil) {
+    const silentFrame = new Uint8Array(AUDIO_CHUNK_SIZE).fill(0)
+    videoSocket.emit('audio', silentFrame.buffer)
     return
   }
   
@@ -897,6 +847,12 @@ const startVideoInterview = async () => {
   try {
     loading.value = true
     console.log('开始视频面试...')
+    pendingAiTranscript = ''
+    currentSubtitle.value = ''
+
+    // 在用户点击手势内提前解锁音频上下文，避免移动端拦截后续AI音频播放
+    await aiAudioProcessor.init()
+    pushDebugLog('ai audio context unlocked')
     
     // 获取面试ID（应该已在store中设置）
     let interviewId = interviewStore.interviewId
@@ -915,25 +871,7 @@ const startVideoInterview = async () => {
     await connectVideoSocket(interviewId?.toString() || '')
     
     console.log('视频WebSocket连接成功，videoSocket状态:', videoSocket?.connected)
-    
-    // 检查socket连接状态
-    if (!videoSocket?.connected) {
-      throw new Error('WebSocket连接未建立')
-    }
-    
-    console.log('开始发送视频帧...')
-    // 开始发送视频帧
-    startVideoStreaming()
-    
-    console.log('开始采集和发送音频流...')
-    // 开始采集和发送音频流（VAD模式需要）
-    startAudioStreaming()
-    
-    interviewStarted.value = true
-    videoConnected.value = true
-    
-    console.log('视频面试已开始，界面状态已更新')
-    ElMessage.success('视频面试已开始，请开始对话')
+    pushDebugLog('socket connected, waiting for backend started event')
     
   } catch (error) {
     console.error('开始视频面试失败:', error)
@@ -946,9 +884,7 @@ const startVideoInterview = async () => {
 
 const connectVideoSocket = (interviewId: string): Promise<void> => {
   return new Promise((resolve, reject) => {
-    const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8083'
-    // Socket.IO需要完整的WebSocket URL，命名空间作为URL的一部分
-    videoSocket = io(wsBaseUrl + '/ws/video', {
+    videoSocket = io(SOCKET_HTTP_BASE_URL + '/ws/video', {
       path: '/socket.io',
       transports: ['websocket'],
       reconnection: false
@@ -967,7 +903,7 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
     
     videoSocket.on('connect', () => {
       console.log('视频WebSocket连接已建立')
-      console.log('socket namespace:', videoSocket?.nsp, 'socket id:', videoSocket?.id)
+      console.log('socket id:', videoSocket?.id)
       
       // 立即resolve，让按钮停止转圈
       if (!connected) {
@@ -982,6 +918,7 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
         interviewId,
         position: interviewStore.position || 'java_backend'
       })
+      pushDebugLog('start_interview emitted')
       console.log('start_interview事件已发送')
     })
     
@@ -1005,6 +942,10 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
     videoSocket.on('response_done', (data: any) => {
       handleSocketMessage({ type: 'response_done' })
     })
+
+    videoSocket.on('user_text', (data: any) => {
+      handleSocketMessage({ type: 'user_text', data: data.data })
+    })
     
     videoSocket.on('started', (data: any) => {
       handleSocketMessage({ type: 'started' })
@@ -1027,6 +968,11 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
       console.log('Socket.IO连接断开')
       videoConnected.value = false
     })
+
+    videoSocket.onAny((eventName: string, ...args: any[]) => {
+      const preview = args.length > 0 ? JSON.stringify(args[0]).slice(0, 120) : ''
+      pushDebugLog(`socket event ${eventName}${preview ? ` ${preview}` : ''}`)
+    })
   })
 }
 
@@ -1036,28 +982,58 @@ const handleSocketMessage = (data: any) => {
   switch (type) {
     case 'audio':
       // 处理AI音频回复
+      modelStatusText.value = '已收到AI音频'
+      aiSpeechBlockUntil = Date.now() + 1800
+      pushDebugLog(`received ai audio chunk length=${(data.data || '').length}`)
       playAIAudio(data.data)
       break
     case 'text':
       // 处理AI文本回复（字幕）
+      modelStatusText.value = '已收到AI文本'
+      pushDebugLog(`received ai text: ${String(data.data || '').slice(0, 30)}`)
+      pendingAiTranscript += data.data || ''
       currentSubtitle.value += data.data
       break
     case 'response_done':
       // AI响应完成
-      currentSubtitle.value = ''
+      modelStatusText.value = '本轮响应完成'
+      aiSpeechBlockUntil = Date.now() + 2600
+      if (pendingAiTranscript.trim()) {
+        addMessage('ai', pendingAiTranscript.trim())
+        currentSubtitle.value = pendingAiTranscript.trim()
+      }
+      pendingAiTranscript = ''
       isPlayingAudio.value = false
       break
+    case 'user_text':
+      pushDebugLog(`received user text: ${String(data.data || '').slice(0, 30)}`)
+      if (String(data.data || '').trim()) {
+        addMessage('user', String(data.data).trim())
+      }
+      break
     case 'started':
-      // 面试已开始
-      addMessage('ai', '您好，我是面试官。请简要介绍一下自己。')
+      // 以后端 started 作为真正的可推流信号，避免会话未激活时前端抢跑
+      if (!mediaStreamingStarted) {
+        mediaStreamingStarted = true
+        interviewStarted.value = true
+        videoConnected.value = true
+        modelStatusText.value = '后端会话已启动，等待模型首句'
+        pushDebugLog('backend started received, begin media streaming')
+        startVideoStreaming()
+        startAudioStreaming()
+        ElMessage.success('视频面试已开始，请开始对话')
+      }
       break
     case 'stopped':
       // 面试已结束
+      modelStatusText.value = '会话已结束'
       finished.value = true
       interviewStarted.value = false
       ElMessage.success('视频面试已结束')
       break
     case 'error':
+      modelStatusText.value = `错误: ${data.message || '未知错误'}`
+      pushDebugLog(`socket error: ${data.message || 'unknown error'}`)
       ElMessage.error(data.message || '视频面试发生错误')
       break
   }
@@ -1105,27 +1081,15 @@ const captureAndSendVideoFrame = () => {
 }
 
 const playAIAudio = (audioBase64: string) => {
-  if (!audioPlayer.value) return
-  
-  try {
-    const audioData = atob(audioBase64)
-    const arrayBuffer = new ArrayBuffer(audioData.length)
-    const uint8Array = new Uint8Array(arrayBuffer)
-    
-    for (let i = 0; i < audioData.length; i++) {
-      uint8Array[i] = audioData.charCodeAt(i)
-    }
-    
-    const blob = new Blob([arrayBuffer], { type: 'audio/wav' })
-    const url = URL.createObjectURL(blob)
-    
-    audioPlayer.value.src = url
-    audioPlayer.value.play()
-    isPlayingAudio.value = true
-    
-  } catch (error) {
-    console.error('播放AI音频失败:', error)
-  }
+  isPlayingAudio.value = true
+  aiAudioProcessor.playPCMBase64(audioBase64)
+    .catch((error) => {
+      console.error('播放AI音频失败:', error)
+      pushDebugLog(`play ai audio failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    .finally(() => {
+      isPlayingAudio.value = false
+    })
 }
 
 const onAudioEnded = () => {
@@ -1178,6 +1142,7 @@ const endInterview = async () => {
     }
     
     // 立即停止音频和视频流
+    mediaStreamingStarted = false
     stopAudioStreaming()
     
     if (videoInterval) {
@@ -1247,6 +1212,7 @@ const cleanup = () => {
     videoSocket = null
   }
   
+  mediaStreamingStarted = false
   stopAudioStreaming()
   stopCamera()
 }
@@ -1299,6 +1265,23 @@ const cleanup = () => {
   color: #333;
 }
 
+.media-warning {
+  margin-bottom: 12px;
+}
+
+.permission-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.permission-hint {
+  color: #606266;
+  font-size: 13px;
+}
+
 .local-video {
   width: 100%;
   max-height: 360px;
@@ -1325,6 +1308,52 @@ const cleanup = () => {
   color: #409eff;
   font-size: 12px;
   margin-left: 12px;
+}
+
+.debug-panel {
+  margin-top: 16px;
+  padding: 12px;
+  background: #111827;
+  color: #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.debug-header {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+.debug-devices {
+  margin-bottom: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.debug-device-row {
+  word-break: break-all;
+  margin-bottom: 4px;
+  color: #cbd5e1;
+}
+
+.debug-log {
+  max-height: 180px;
+  overflow-y: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.debug-log-line {
+  margin-bottom: 4px;
+  word-break: break-word;
+  color: #93c5fd;
 }
 
 .device-selection {
