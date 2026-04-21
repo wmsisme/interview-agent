@@ -38,7 +38,7 @@ def main():
             host=host,
             port=port,
             debug=True,
-            use_reloader=True,
+            use_reloader=False,
             allow_unsafe_werkzeug=True
         )
     else:

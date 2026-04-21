@@ -39,16 +39,40 @@ if errorlevel 1 (
 )
 
 echo Stopping Frontend Service (Video Interview Interface)...
-taskkill /im node.exe 2>nul
-if not errorlevel 1 (
-    echo [INFO] Sent termination signal to Node.js processes, waiting for graceful shutdown...
-    timeout /t 3 /nobreak >nul
+
+:: 精确停止5173/5174端口进程
+set PORTS=5173 5174
+set PORT_STOPPED=0
+for %%P in (%PORTS%) do (
+    echo Checking port %%P...
+    for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%%P" ^| findstr "LISTENING"') do (
+        echo   Stopping process PID %%p (port %%P)...
+        taskkill /PID %%p 2>nul
+        timeout /t 2 /nobreak >nul
+        taskkill /f /PID %%p 2>nul
+        if !errorlevel! EQU 0 (
+            echo   [OK] Process %%p stopped
+            set PORT_STOPPED=1
+        )
+    )
 )
-taskkill /f /im node.exe 2>nul
-if errorlevel 1 (
-    echo [INFO] Frontend Service (Video Interview) not running
+
+:: 如果端口方法没有停止任何进程，使用备用方法
+if !PORT_STOPPED! EQU 0 (
+    echo [INFO] No port-specific processes found, using fallback method...
+    taskkill /im node.exe 2>nul
+    if not errorlevel 1 (
+        echo [INFO] Sent termination signal to Node.js processes, waiting for graceful shutdown...
+        timeout /t 3 /nobreak >nul
+    )
+    taskkill /f /im node.exe 2>nul
+    if errorlevel 1 (
+        echo [INFO] Frontend Service (Video Interview) not running
+    ) else (
+        echo [DONE] Frontend Service (Video Interview) stopped
+    )
 ) else (
-    echo [DONE] Frontend Service (Video Interview) stopped
+    echo [DONE] Frontend Service (Video Interview) stopped (port-specific)
 )
 
 echo.

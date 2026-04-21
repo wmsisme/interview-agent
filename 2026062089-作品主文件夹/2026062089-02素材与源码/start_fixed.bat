@@ -59,6 +59,8 @@ exit /b 1
 echo [OK] All dependencies found
 echo.
 
+set MYSQL_AVAILABLE=0
+
 echo [2/3] Checking configuration and environment...
 echo.
 
@@ -72,6 +74,7 @@ mysql --host=localhost --port=3306 --user=root --password=123456 --execute="SELE
 if errorlevel 1 goto mysql_connect_failed
 
 echo [OK] MySQL connection successful
+set MYSQL_AVAILABLE=1
 REM Check if database exists
 mysql --host=localhost --port=3306 --user=root --password=123456 --execute="SHOW DATABASES LIKE 'ai_interview';" > "%TEMP%\mysql_check.tmp" 2>&1
 findstr "ai_interview" "%TEMP%\mysql_check.tmp" > nul
@@ -85,12 +88,14 @@ del "%TEMP%\mysql_check.tmp" >nul 2>&1
 goto mysql_check_done
 
 :mysql_not_found
+set MYSQL_AVAILABLE=0
 echo [WARNING] MySQL client not found in PATH
 echo Database functionality may be limited
 echo Install MySQL if needed for full functionality
 goto mysql_check_done
 
 :mysql_connect_failed
+set MYSQL_AVAILABLE=0
 echo [WARNING] Cannot connect to MySQL with default credentials (root/123456)
 echo Please update database credentials in backend\flask-backend\.env if different
 echo.
@@ -119,6 +124,12 @@ if not exist ".env" (
         echo [WARNING] VIDEO_CHAT_API_KEY appears to be using default value
         echo Video interview will not work without a valid Qwen-Omni API key
     )
+    :: Check if database password is still default
+    findstr /i "DB_PASSWORD=123456" .env | findstr /v "^#" > nul
+    if not errorlevel 1 (
+        echo [WARNING] DB_PASSWORD is using default value (123456)
+        echo Consider changing it for security reasons
+    )
 )
 
 :: Check port availability
@@ -141,16 +152,23 @@ echo.
 echo [3/3] Starting services...
 echo.
 
-echo [2.1] Starting Flask Backend Service (Video Interview + RAG)...
+echo [3.1] Starting Flask Backend Service (Video Interview + RAG)...
 if not exist "%PROJECT_ROOT%backend\flask-backend\requirements.txt" (
     echo [ERROR] Flask backend not found at: %PROJECT_ROOT%backend\flask-backend\
     echo Please ensure Flask backend is properly set up
     pause
     exit /b 1
 )
+set VENV_PATH=
 if exist "%PROJECT_ROOT%backend\flask-backend\venv\Scripts\activate.bat" (
-    echo [INFO] Using Python virtual environment
-    start "Flask Backend (Video Interview + RAG)" cmd /k "cd /d "%PROJECT_ROOT%backend\flask-backend" && call venv\Scripts\activate.bat && python run.py"
+    set VENV_PATH=venv
+) else if exist "%PROJECT_ROOT%backend\flask-backend\.venv\Scripts\activate.bat" (
+    set VENV_PATH=.venv
+)
+
+if not "!VENV_PATH!"=="" (
+    echo [INFO] Using Python virtual environment (!VENV_PATH!)
+    start "Flask Backend (Video Interview + RAG)" cmd /k "cd /d "%PROJECT_ROOT%backend\flask-backend" && call !VENV_PATH!\Scripts\activate.bat && python run.py"
 ) else (
     echo [WARNING] No virtual environment found, using system Python
     echo [NOTE] Virtual environment recommended for dependency isolation
@@ -162,13 +180,13 @@ echo Verifying Flask backend startup...
 set VERIFY_ATTEMPTS=0
 :verify_backend
 set /a VERIFY_ATTEMPTS+=1
-echo Attempt !VERIFY_ATTEMPTS!/5: Checking backend health...
-powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:8083/api/health' -TimeoutSec 5; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+echo Attempt !VERIFY_ATTEMPTS!/3: Checking backend health...
+powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:8083/api/health' -TimeoutSec 3 -UseBasicParsing; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
 if not errorlevel 1 (
     echo [OK] Flask backend is running and healthy
     goto backend_verified
 )
-if !VERIFY_ATTEMPTS! GEQ 5 (
+if !VERIFY_ATTEMPTS! GEQ 3 (
     echo [WARNING] Flask backend may not have started properly
     echo Continuing anyway, but the backend may not be available
     goto backend_failed
@@ -178,7 +196,36 @@ goto verify_backend
 :backend_verified
 :backend_failed
 
-echo [2.2] Starting Frontend Service (Video Interview Interface)...
+:: Clean up port conflicts before starting frontend
+echo [INFO] Checking and cleaning port conflicts...
+echo Checking port 5173 (frontend)...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5173" ^| findstr "LISTENING"') do (
+    echo   Found process PID %%p occupying port 5173
+    taskkill /PID %%p /F >nul 2>&1
+    if !errorlevel! EQU 0 (
+        echo   [OK] Process %%p terminated
+    ) else (
+        echo   [WARNING] Failed to terminate process %%p
+    )
+    timeout /t 1 /nobreak >nul
+)
+
+echo Checking port 5174 (alternative frontend port)...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5174" ^| findstr "LISTENING"') do (
+    echo   Found process PID %%p occupying port 5174
+    taskkill /PID %%p /F >nul 2>&1
+    if !errorlevel! EQU 0 (
+        echo   [OK] Process %%p terminated
+    ) else (
+        echo   [WARNING] Failed to terminate process %%p
+    )
+    timeout /t 1 /nobreak >nul
+)
+
+echo [INFO] Port cleanup completed
+echo.
+
+echo [3.2] Starting Frontend Service (Video Interview Interface)...
 if not exist "%PROJECT_ROOT%frontend\package.json" (
     echo [ERROR] Frontend not found at: %PROJECT_ROOT%frontend\
     echo Please ensure frontend is properly set up
@@ -194,7 +241,7 @@ echo All services started! Video Interview System Ready
 echo ========================================
 echo.
 echo URLs:
-echo   Frontend (Video Interview): http://localhost:5173
+echo   Frontend (Video Interview): https://localhost:5173
 echo   Flask Backend (API + WebSocket): http://localhost:8083
 echo   Video WebSocket: ws://localhost:8083/video_chat
 echo   RAG Service: Enabled (local mode, chroma_db ready)
@@ -211,7 +258,7 @@ echo [NOTE] System only supports video interview mode
 echo        No text or voice-only interview modes available
 echo.
 echo Opening frontend in browser...
-start "" http://localhost:5173
+start "" https://localhost:5173
 
 echo.
 echo Press any key to keep this window open...

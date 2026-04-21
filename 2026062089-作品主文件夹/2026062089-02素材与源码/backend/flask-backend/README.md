@@ -175,8 +175,8 @@ curl "http://localhost:8083/api/tts?text=你好世界" \
 
 #### 依赖要求
 - **ffmpeg**: 需要安装ffmpeg并添加到PATH环境变量，用于音频格式转换
-- **网络连接**: 需要能够访问讯飞星火API
-- **API凭证**: 使用默认测试凭证或配置自己的讯飞星火API凭证
+- **网络连接**: 需要能够访问阿里云百炼API（Qwen-Omni Realtime）
+- **API凭证**: 使用默认测试凭证或配置自己的Qwen-Omni Realtime API密钥
 
 ## 配置说明
 
@@ -187,11 +187,12 @@ curl "http://localhost:8083/api/tts?text=你好世界" \
 - `DB_USER`: 数据库用户
 - `DB_PASSWORD`: 数据库密码
 
-### 科大讯飞配置
-- `IFLYTEK_APP_ID`: 讯飞应用ID
-- `IFLYTEK_API_KEY`: 讯飞API密钥
-- `IFLYTEK_API_SECRET`: 讯飞API密钥
-- `IFLYTEK_RES_ID`: 讯飞资源ID
+### Qwen-Omni Realtime配置
+- `QWEN_OMNI_API_KEY`: Qwen-Omni Realtime API密钥
+- `QWEN_OMNI_MODEL`: 模型名称（默认：qwen3.5-omni-plus-realtime）
+- `QWEN_OMNI_VOICE`: 语音名称（默认：Ethan）
+- `VIDEO_CHAT_API_KEY`: 视频聊天API密钥（可与QWEN_OMNI_API_KEY相同）
+- `VIDEO_CHAT_MODEL`: 视频聊天模型（默认：qwen3.5-omni-plus-realtime）
 
 ### 大模型配置
 - `LLM_PROVIDER`: 大模型提供商 (deepseek/tongyi/zhipu)

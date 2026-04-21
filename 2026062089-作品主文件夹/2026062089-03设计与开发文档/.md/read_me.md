@@ -7,7 +7,7 @@ AI模拟面试系统是一个面向计算机专业学生的智能面试平台，
 ### 核心功能
 
 - **多岗位面试管理**: 支持Java后端、Web前端等岗位的模拟面试
-- **语音交互**: 集成科大讯飞语音识别(ASR)和语音合成(TTS)功能
+- **语音交互**: 集成Qwen-Omni Realtime语音识别(ASR)和语音合成(TTS)功能
 - **智能评估**: 基于大语言模型(LLM)的答案评估和问题生成
 - **RAG集成**: 基于向量数据库的知识检索增强
 - **报告生成**: 自动化面试报告与能力分析
@@ -27,8 +27,8 @@ AI模拟面试系统是一个面向计算机专业学生的智能面试平台，
 | **WebSocket服务** | Flask-SocketIO | 实时语音流处理 |
 | **数据库ORM** | Flask-SQLAlchemy | 数据库操作 |
 | **数据库** | MySQL 8.0 | 数据持久化 |
-| **语音服务** | 科大讯飞SDK | 语音识别和合成 |
-| **大模型** | DeepSeek/通义千问等 | 智能对话与评估 |
+| **语音服务** | Qwen-Omni Realtime | 语音识别和合成 |
+| **大模型** | Qwen-Omni Realtime/通义千问等 | 智能对话与评估 |
 | **向量检索** | Sentence-Transformers | 文本嵌入与相似度计算 |
 
 ## 项目结构
@@ -64,12 +64,13 @@ ai_bot/
 ├── models/                       # AI模型文件
 │   └── bge-large-zh/             # BGE中文嵌入模型
 ├── .md/                          # 项目文档目录
+│   ├── read_me.md               # 完整项目文档（即本文件）
 │   ├── read_me_vue.md           # Vue前端开发指南
 │   ├── 启动指南.md              # 系统启动指南
 │   ├── 数据库初始化指南.md      # 数据库配置指南
 │   ├── 错误排查.md              # 常见问题排查
 │   ├── 验收清单.md              # 功能验收清单
-│   ├── 讯飞星火.md              # 讯飞语音配置指南
+│   ├── Qwen.md                  # Qwen-Omni Realtime配置指南
 │   └── RAG部署指南.md           # RAG部署指南
 └── 语音功能测试/                 # 语音功能测试项目
     └── README.md                 # 语音测试说明
@@ -130,7 +131,7 @@ npm run dev
 
 - **后端开发指南**: 参见 [backend/flask-backend/README.md](backend/flask-backend/README.md)
 - **前端开发指南**: 参见 [.md/read_me_vue.md](.md/read_me_vue.md)
-- **语音服务配置**: 参见 [.md/讯飞星火.md](.md/讯飞星火.md)
+- **语音服务配置**: 参见 [.md/Qwen.md](.md/Qwen.md)
 - **数据库配置**: 参见 [.md/数据库初始化指南.md](.md/数据库初始化指南.md)
 - **错误排查**: 参见 [.md/错误排查.md](.md/错误排查.md)
 - **功能验收**: 参见 [.md/验收清单.md](.md/验收清单.md)
@@ -150,14 +151,17 @@ DB_NAME=ai_interview
 DB_USER=root
 DB_PASSWORD=123456
 
-# 科大讯飞配置
-IFLYTEK_APP_ID=ad0d03e3
-IFLYTEK_API_KEY=3ac7a8d591e191628bb48afc9ea1873f
-IFLYTEK_API_SECRET=YzFjMjJmNmZhMzRjZDA4M2QxZDYxYWZm
+# Qwen-Omni Realtime配置（视频面试）
+QWEN_OMNI_API_KEY=your_qwen_api_key_here
+QWEN_OMNI_MODEL=qwen3.5-omni-plus-realtime
+QWEN_OMNI_VOICE=Ethan
+VIDEO_CHAT_API_KEY=${QWEN_OMNI_API_KEY}
+VIDEO_CHAT_MODEL=${QWEN_OMNI_MODEL}
 
-# 大模型配置
-LLM_PROVIDER=deepseek
+# 大模型配置（文本生成与评估）
+LLM_PROVIDER=tongyi
 LLM_API_KEY=your_api_key_here
+TONGYI_MODEL=qwen-plus
 ```
 
 ### 前端代理配置

@@ -1065,12 +1065,12 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     videoSocket = io(SOCKET_HTTP_BASE_URL + '/ws/video', {
       path: '/socket.io',
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 20000
+      timeout: 30000
     })
     
     let connected = false
@@ -1158,6 +1158,9 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
         clearInterval(videoInterval)
         videoInterval = null
       }
+      // 停止AI音频播放
+      isPlayingAudio.value = false
+      aiAudioProcessor.destroy()
       
       // 显示断开连接通知
       ElMessage.warning(`连接已断开: ${reason}`)
@@ -1197,6 +1200,11 @@ const handleSocketMessage = (data: any) => {
   switch (type) {
     case 'audio':
       // 处理AI音频回复
+      // 如果面试已结束，忽略音频数据
+      if (finished.value) {
+        pushDebugLog(`忽略面试结束后的AI音频数据`)
+        break
+      }
       modelStatusText.value = '已收到AI音频'
       aiSpeechBlockUntil = Date.now() + 800
       pushDebugLog(`received ai audio chunk length=${(data.data || '').length}`)
@@ -1244,6 +1252,9 @@ const handleSocketMessage = (data: any) => {
       modelStatusText.value = '会话已结束'
       finished.value = true
       interviewStarted.value = false
+      // 停止AI音频播放
+      isPlayingAudio.value = false
+      aiAudioProcessor.destroy()
       ElMessage.success('视频面试已结束')
       break
     case 'error':
@@ -1359,6 +1370,9 @@ const endInterview = async () => {
     // 立即停止音频和视频流
     mediaStreamingStarted = false
     stopAudioStreaming()
+    // 停止AI音频播放
+    isPlayingAudio.value = false
+    aiAudioProcessor.destroy()
     
     if (videoInterval) {
       clearInterval(videoInterval)
@@ -1424,6 +1438,9 @@ const handleSocketError = () => {
     clearInterval(videoInterval)
     videoInterval = null
   }
+  // 停止AI音频播放
+  isPlayingAudio.value = false
+  aiAudioProcessor.destroy()
   // 标记连接已断开
   videoConnected.value = false
   mediaStreamingStarted = false
@@ -1445,6 +1462,9 @@ const cleanup = () => {
   
   mediaStreamingStarted = false
   stopAudioStreaming()
+  // 停止AI音频播放
+  isPlayingAudio.value = false
+  aiAudioProcessor.destroy()
   stopCamera()
 }
 </script>
