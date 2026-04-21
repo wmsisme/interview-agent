@@ -5,8 +5,7 @@ import random
 import requests
 from typing import List, Dict, Any
 from ..config.default import (
-    LLM_PROVIDER, LLM_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL,
-    TONGYI_URL, TONGYI_MODEL, ZHIPU_URL, ZHIPU_MODEL,
+    LLM_PROVIDER, LLM_API_KEY, TONGYI_URL, TONGYI_MODEL,
     RAG_SERVICE_URL, RAG_TOP_K, RAG_ENABLED, RAG_MODE
 )
 
@@ -136,39 +135,8 @@ class LLMService:
             return self._get_default_evaluation(question, position)
     
     def _call_llm_api(self, messages: List[Dict]) -> str:
-        if self.provider == 'deepseek':
-            return self._call_deepseek_api(messages)
-        elif self.provider == 'tongyi':
-            return self._call_tongyi_api(messages)
-        elif self.provider == 'zhipu':
-            return self._call_zhipu_api(messages)
-        else:
-            # 默认使用DeepSeek
-            return self._call_deepseek_api(messages)
-    
-    def _call_deepseek_api(self, messages: List[Dict]) -> str:
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": DEEPSEEK_MODEL,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 2000
-            }
-            
-            response = requests.post(DEEPSEEK_URL, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
-            
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-            
-        except Exception as e:
-            logger.error(f"DeepSeek API调用失败: {str(e)}")
-            raise
+        # 仅支持千问文本API
+        return self._call_tongyi_api(messages)
     
     def _call_tongyi_api(self, messages: List[Dict]) -> str:
         try:
@@ -198,29 +166,7 @@ class LLMService:
             logger.error(f"通义千问API调用失败: {str(e)}")
             raise
     
-    def _call_zhipu_api(self, messages: List[Dict]) -> str:
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": ZHIPU_MODEL,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 2000
-            }
-            
-            response = requests.post(ZHIPU_URL, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
-            
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-            
-        except Exception as e:
-            logger.error(f"智谱AI API调用失败: {str(e)}")
-            raise
+
     
     def _search_rag(self, query: str, collection: str, limit: int = None) -> List[Dict]:
         if not RAG_ENABLED or not self.rag_service or not self.rag_service.enabled:
