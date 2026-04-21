@@ -52,19 +52,9 @@ def submit_answer():
 @bp.route('/answer/audio', methods=['POST'])
 def submit_audio_answer():
     try:
-        interview_id = request.form.get('interviewId')
-        question_id = request.form.get('questionId')
-        audio_file = request.files.get('audio')
-        
-        if not interview_id or not question_id or not audio_file:
-            return bad_request('interviewId, questionId, and audio file are required')
-        
-        audio_data = audio_file.read()
-        
-        # 调用服务层处理音频回答
-        result = interview_service.process_audio_answer(interview_id, question_id, audio_data)
-        
-        return success(result)
+        # 语音识别服务已移除，仅支持视频面试模式
+        # 在视频面试中，音频由Qwen-Omni实时模型直接处理
+        return error('语音识别服务已移除。请使用视频面试模式，音频将由Qwen-Omni实时模型直接处理。', code=410)
     except Exception as e:
         return error(str(e))
 

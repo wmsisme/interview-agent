@@ -18,27 +18,13 @@ def create_app():
     else:
         app.config.from_pyfile('config/development.py')
     
-    from .routes import interview, voice, health, websocket, rag
+    from .routes import interview, health, rag
     app.register_blueprint(interview.bp)
-    app.register_blueprint(voice.bp)
     app.register_blueprint(health.bp)
     app.register_blueprint(rag.bp)
     
     # 初始化SocketIO
     socketio.init_app(app, cors_allowed_origins="*", logger=False, engineio_logger=False)
-    
-    # 初始化WebSocket路由（保持向后兼容）
-    websocket.init_websocket(socketio)
-    
-    # 初始化Qwen-Omni WebSocket路由
-    try:
-        from .routes.websocket_qwen import init_qwen_websocket
-        init_qwen_websocket(socketio)
-        print("Qwen-Omni WebSocket路由已注册")
-    except ImportError as e:
-        print(f"警告：无法导入Qwen-Omni WebSocket路由: {e}")
-    except Exception as e:
-        print(f"警告：初始化Qwen-Omni WebSocket路由失败: {e}")
     
     # 初始化视频WebSocket路由
     try:

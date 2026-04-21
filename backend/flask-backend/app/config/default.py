@@ -23,36 +23,19 @@ SQLALCHEMY_ECHO = False
 SERVER_HOST = os.environ.get('SERVER_HOST', '0.0.0.0')
 SERVER_PORT = int(os.environ.get('SERVER_PORT', 8083))
 
-# 科大讯飞配置
-IFLYTEK_APP_ID = os.environ.get('IFLYTEK_APP_ID', 'ad0d03e3')
-IFLYTEK_API_KEY = os.environ.get('IFLYTEK_API_KEY', '3ac7a8d591e191628bb48afc9ea1873f')
-IFLYTEK_API_SECRET = os.environ.get('IFLYTEK_API_SECRET', 'YzFjMjJmNmZhMzRjZDA4M2QxZDYxYWZm')
-IFLYTEK_RES_ID = os.environ.get('IFLYTEK_RES_ID', 'YWQwZDAzZTMyMTY0NTQ3MDE1OWJtYw==')
-IFLYTEK_ASR_URL = os.environ.get('IFLYTEK_ASR_URL', 'wss://iat-api.xfyun.cn/v2/iat')
-IFLYTEK_TTS_URL = os.environ.get('IFLYTEK_TTS_URL', 'https://api.xfyun.cn/v1/service/v1/tts')
-IFLYTEK_TTS_WS_URL = os.environ.get('IFLYTEK_TTS_WS_URL', 'wss://tts-api.xfyun.cn/v2/tts')
-
-# 大模型配置
-LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'deepseek')
-LLM_API_KEY = os.environ.get('LLM_API_KEY', 'sk-ac7270f719ae48268240f0bdc715ed7e')
-
-# DeepSeek配置
-DEEPSEEK_URL = os.environ.get('DEEPSEEK_URL', 'https://api.deepseek.com/chat/completions')
-DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
-
-# 通义千问配置
-TONGYI_URL = os.environ.get('TONGYI_URL', 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation')
-TONGYI_MODEL = os.environ.get('TONGYI_MODEL', 'qwen-plus')
-
-# 智谱AI配置
-ZHIPU_URL = os.environ.get('ZHIPU_URL', 'https://open.bigmodel.cn/api/paas/v4/chat/completions')
-ZHIPU_MODEL = os.environ.get('ZHIPU_MODEL', 'glm-4')
-
-# RAG服务配置
+# RAG服务配置 - 默认启用RAG以增强面试专业性
 RAG_SERVICE_URL = os.environ.get('RAG_SERVICE_URL', 'http://localhost:8083')
 RAG_TOP_K = int(os.environ.get('RAG_TOP_K', 5))
-RAG_ENABLED = os.environ.get('RAG_ENABLED', 'false').lower() == 'true'
+RAG_ENABLED = os.environ.get('RAG_ENABLED', 'true').lower() == 'true'
 RAG_MODE = os.environ.get('RAG_MODE', 'local')  # 'local' 或 'http'
+
+# LLM配置 - 用于问题生成和评估（使用千问文本API）
+LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'tongyi')  # 使用千问文本API
+LLM_API_KEY = os.environ.get('LLM_API_KEY', 'sk-206a776b2b1a4422bef8941e33e10cc5')  # 使用与视频聊天相同的API密钥
+
+# 千问文本API配置（通义千问）
+TONGYI_URL = os.environ.get('TONGYI_URL', 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation')
+TONGYI_MODEL = os.environ.get('TONGYI_MODEL', 'qwen-plus')
 
 # 计算绝对路径
 CHROMA_DB_RELATIVE = os.environ.get('CHROMA_DB_PATH', '../../chroma_db')
@@ -69,8 +52,8 @@ QWEN_OMNI_VOICE = os.environ.get('QWEN_OMNI_VOICE', 'Ethan')
 QWEN_OMNI_ENABLED = os.environ.get('QWEN_OMNI_ENABLED', 'true').lower() == 'true'
 QWEN_OMNI_ENABLE_TURN_DETECTION = os.environ.get('QWEN_OMNI_ENABLE_TURN_DETECTION', 'false').lower() == 'true'
 
-# 视频聊天配置（基于Qwen-Omni-Realtime）
-VIDEO_CHAT_API_KEY = os.environ.get('VIDEO_CHAT_API_KEY', QWEN_OMNI_API_KEY)  # 默认使用Qwen-Omni密钥
+# 视频聊天配置（基于Qwen-Omni-Realtime）- 核心视频AI面试服务
+VIDEO_CHAT_API_KEY = os.environ.get('VIDEO_CHAT_API_KEY', QWEN_OMNI_API_KEY)
 VIDEO_CHAT_MODEL = os.environ.get('VIDEO_CHAT_MODEL', 'qwen3.5-omni-plus-realtime')
 VIDEO_CHAT_REGION = os.environ.get('VIDEO_CHAT_REGION', 'cn')  # cn: 北京, intl: 新加坡
 VIDEO_CHAT_VOICE = os.environ.get('VIDEO_CHAT_VOICE', 'Ethan')
