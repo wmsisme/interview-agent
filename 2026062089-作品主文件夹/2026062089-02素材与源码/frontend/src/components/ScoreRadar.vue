@@ -85,10 +85,13 @@ const initChart = () => {
     tooltip: {
       trigger: 'item',
       formatter: function(params: any) {
-        const data = params.data as RadarDataItem
-        const value = Number(data.value)
+        if (!params || !params.data || !params.indicator) {
+          return '-'
+        }
+        const indicatorName = params.indicator.name || params.name || ''
+        const value = Number(params.value)
         const formattedValue = isNaN(value) ? '0.0' : value.toFixed(1)
-        return `${data.name}: ${formattedValue}/${params.indicator.max}`
+        return `${indicatorName}: ${formattedValue}/${params.indicator.max}`
       }
     },
     legend: {
@@ -97,7 +100,7 @@ const initChart = () => {
     radar: {
       indicator: radarIndicator(),
       shape: 'polygon',
-      splitNumber: 4,
+      splitNumber: 5,
       radius: '65%',
       axisName: {
         color: '#64748b',
@@ -106,13 +109,13 @@ const initChart = () => {
       },
       splitLine: {
         lineStyle: {
-          color: ['#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b'].reverse()
+          color: ['#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b', '#475569'].reverse()
         }
       },
       splitArea: {
         show: true,
         areaStyle: {
-          color: ['#f8fafc', '#f1f5f9', '#e2e8f0', '#cbd5e1'].reverse()
+          color: ['#f8fafc', '#f1f5f9', '#e2e8f0', '#cbd5e1', '#94a3b8'].reverse()
         }
       },
       axisLine: {

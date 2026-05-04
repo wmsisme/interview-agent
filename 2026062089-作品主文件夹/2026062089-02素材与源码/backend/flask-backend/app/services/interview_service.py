@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from ..models import db, InterviewRecord, QuestionAnswer
 from .llm_service import LLMService
@@ -138,6 +139,114 @@ class InterviewService:
         # 在视频面试中，音频由Qwen-Omni实时模型直接处理
         raise NotImplementedError("语音识别服务已移除。请使用视频面试模式，音频将由Qwen-Omni实时模型直接处理。")
 
+    def save_conversation(self, interview_id, conversation):
+        try:
+            interview_id = int(interview_id)
+            
+            if not conversation:
+                logger.warning(f"[InterviewService] 对话数据为空，跳过保存: interview_id={interview_id}")
+                return
+            
+            qa_pairs = []
+            i = 0
+            while i < len(conversation) - 1:
+                entry = conversation[i]
+                next_entry = conversation[i + 1]
+                if entry.get('role') == 'ai' and next_entry.get('role') == 'user':
+                    qa_pairs.append((entry.get('content', ''), next_entry.get('content', '')))
+                    i += 2
+                else:
+                    i += 1
+            
+            if not qa_pairs:
+                logger.warning(f"[InterviewService] 无有效QA对: interview_id={interview_id}, messages={len(conversation)}")
+                return
+            
+            existing_qas = QuestionAnswer.query.filter_by(interview_id=interview_id).all()
+            existing_scored = {qa.question: qa for qa in existing_qas if qa.tech_score is not None}
+
+            unscored_to_delete = [qa for qa in existing_qas if qa.tech_score is None]
+            if unscored_to_delete:
+                for qa in unscored_to_delete:
+                    db.session.delete(qa)
+                db.session.flush()
+
+            for question, answer in qa_pairs:
+                if question in existing_scored:
+                    existing = existing_scored[question]
+                    if not existing.answer or existing.answer.strip() != answer.strip():
+                        existing.answer = answer
+                    continue
+
+                qa = QuestionAnswer(
+                    interview_id=interview_id,
+                    question=question,
+                    answer=answer,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(qa)
+            
+            db.session.commit()
+            logger.info(f"[InterviewService] 保存对话记录: interview_id={interview_id}, QA对={len(qa_pairs)}, 已评分保留={len(existing_scored)}, 总消息={len(conversation)}")
+            
+        except (ValueError, TypeError) as e:
+            logger.error(f"保存对话失败(参数错误): {str(e)}")
+        except Exception as e:
+            logger.error(f"保存对话失败: {str(e)}")
+            db.session.rollback()
+
+    def save_answer(self, interview_id, question_text, answer_text, audio_url=None):
+        try:
+            interview_id = int(interview_id)
+            
+            # 优先查找最近一条未回答的记录（save_question已创建）
+            qa = QuestionAnswer.query.filter_by(
+                interview_id=interview_id
+            ).filter(
+                QuestionAnswer.answer.is_(None)
+            ).order_by(QuestionAnswer.created_at.desc()).first()
+
+            if qa:
+                qa.answer = answer_text
+                if audio_url:
+                    qa.audio_url = audio_url
+                db.session.commit()
+                logger.info(f"[InterviewService] 保存用户回答: interview_id={interview_id}, qa_id={qa.id}")
+            else:
+                # 没有待回答的记录，创建新的完整QA记录
+                qa = QuestionAnswer(
+                    interview_id=interview_id,
+                    question=question_text or "语音回答",
+                    answer=answer_text,
+                    audio_url=audio_url,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(qa)
+                db.session.commit()
+                logger.info(f"[InterviewService] 创建新QA记录并保存回答: interview_id={interview_id}, qa_id={qa.id}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"保存回答失败(参数类型错误): interview_id={interview_id}, error={str(e)}")
+        except Exception as e:
+            logger.error(f"保存回答失败: {str(e)}")
+            db.session.rollback()
+
+    def save_question(self, interview_id, question_text):
+        try:
+            interview_id = int(interview_id)
+            qa = QuestionAnswer(
+                interview_id=interview_id,
+                question=question_text,
+                created_at=datetime.utcnow()
+            )
+            db.session.add(qa)
+            db.session.commit()
+            logger.info(f"[InterviewService] 保存AI问题: interview_id={interview_id}, qa_id={qa.id}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"保存问题失败(参数类型错误): interview_id={interview_id}, error={str(e)}")
+        except Exception as e:
+            logger.error(f"保存问题失败: {str(e)}")
+            db.session.rollback()
+
     def get_interview_record(self, interview_id):
         """根据ID获取面试记录"""
         try:
@@ -174,42 +283,19 @@ class InterviewService:
             if not record:
                 raise ValueError("面试记录不存在")
             
-            # 检查面试是否已经结束
-            if record.end_time is not None:
-                logger.info(f"面试 {interview_id} 已经结束于 {record.end_time}")
-                # 面试已经结束，返回现有记录
-                return record.to_dict()
+            if record.end_time is None:
+                record.end_time = datetime.utcnow()
             
-            record.end_time = datetime.utcnow()
-            
-            # 计算平均分
-            qa_list = QuestionAnswer.query.filter_by(interview_id=interview_id).all()
-            
-            if qa_list:
-                tech_scores = [qa.tech_score for qa in qa_list if qa.tech_score is not None]
-                depth_scores = [qa.depth_score for qa in qa_list if qa.depth_score is not None]
-                logic_scores = [qa.logic_score for qa in qa_list if qa.logic_score is not None]
-                match_scores = [qa.match_score for qa in qa_list if qa.match_score is not None]
-                
-                tech_avg = sum(tech_scores) / len(tech_scores) if tech_scores else 0
-                depth_avg = sum(depth_scores) / len(depth_scores) if depth_scores else 0
-                logic_avg = sum(logic_scores) / len(logic_scores) if logic_scores else 0
-                match_avg = sum(match_scores) / len(match_scores) if match_scores else 0
-                
-                overall_avg = (tech_avg + depth_avg + logic_avg + match_avg) / 4
-                record.overall_score = overall_avg
-            
-            # 生成报告
             report = self.generate_report(interview_id)
-            record.report = report
+            import json
+            record.report = json.dumps(report, ensure_ascii=False)
             
             db.session.commit()
             
-            # 清理对话历史
             if interview_id in self.conversation_history:
                 del self.conversation_history[interview_id]
             
-            logger.info(f"面试 {interview_id} 已成功结束")
+            logger.info(f"面试 {interview_id} 已成功结束，报告已生成")
             return record.to_dict()
             
         except Exception as e:
@@ -249,112 +335,115 @@ class InterviewService:
             
             qa_list = QuestionAnswer.query.filter_by(interview_id=interview_id).all()
             
-            # 计算平均分
-            tech_scores = [qa.tech_score for qa in qa_list if qa.tech_score is not None]
-            depth_scores = [qa.depth_score for qa in qa_list if qa.depth_score is not None]
-            logic_scores = [qa.logic_score for qa in qa_list if qa.logic_score is not None]
-            match_scores = [qa.match_score for qa in qa_list if qa.match_score is not None]
+            position_display = self._get_position_display_name(record.position)
             
-            tech_avg = sum(tech_scores) / len(tech_scores) if tech_scores else 0
-            depth_avg = sum(depth_scores) / len(depth_scores) if depth_scores else 0
-            logic_avg = sum(logic_scores) / len(logic_scores) if logic_scores else 0
-            match_avg = sum(match_scores) / len(match_scores) if match_scores else 0
-            
-            overall_avg = (tech_avg + depth_avg + logic_avg + match_avg) / 4
-            
-            # 计算面试时长（分钟）
             duration_minutes = 0
             if record.start_time and record.end_time:
                 duration_seconds = (record.end_time - record.start_time).total_seconds()
                 duration_minutes = int(duration_seconds / 60)
             
-            # 获取问题数量
             question_count = len(qa_list)
             
-            # 生成雷达图数据
+            qa_pairs_for_llm = []
+            for qa in qa_list:
+                qa_pairs_for_llm.append({
+                    "question": qa.question,
+                    "answer": qa.answer or "",
+                    "feedback": qa.feedback or "",
+                    "tech_score": qa.tech_score,
+                    "depth_score": qa.depth_score,
+                    "logic_score": qa.logic_score,
+                    "match_score": qa.match_score
+                })
+
+            llm_report = self.llm_service.generate_comprehensive_report(
+                qa_pairs=qa_pairs_for_llm,
+                position=record.position
+            )
+
+            per_round = llm_report.get('perRound', [])
+
+            tech_avg = 0
+            depth_avg = 0
+            logic_avg = 0
+            match_avg = 0
+
+            if per_round and len(per_round) == len(qa_list):
+                tech_scores = [r.get('techScore', 0) or 0 for r in per_round]
+                depth_scores = [r.get('depthScore', 0) or 0 for r in per_round]
+                logic_scores = [r.get('logicScore', 0) or 0 for r in per_round]
+                match_scores = [r.get('matchScore', 0) or 0 for r in per_round]
+                tech_avg = sum(tech_scores) / len(tech_scores)
+                depth_avg = sum(depth_scores) / len(depth_scores)
+                logic_avg = sum(logic_scores) / len(logic_scores)
+                match_avg = sum(match_scores) / len(match_scores)
+
+                for i, qa in enumerate(qa_list):
+                    if i < len(per_round):
+                        pr = per_round[i]
+                        qa.tech_score = int(pr.get('techScore', 0) or 0)
+                        qa.depth_score = int(pr.get('depthScore', 0) or 0)
+                        qa.logic_score = int(pr.get('logicScore', 0) or 0)
+                        qa.match_score = int(pr.get('matchScore', 0) or 0)
+                        qa.feedback = pr.get('feedback', '') or ''
+                db.session.commit()
+                logger.info(f"[InterviewService] 已保存 DeepSeek 评分到 {len(per_round)} 条 Q&A")
+            else:
+                estimated = llm_report.get('estimatedScores', {})
+                tech_avg = float(estimated.get('technical', 7.0))
+                depth_avg = float(estimated.get('depth', 7.0))
+                logic_avg = float(estimated.get('logic', 7.0))
+                match_avg = float(estimated.get('match', 7.0))
+
+            overall_avg = (tech_avg + depth_avg + logic_avg + match_avg) / 4
+            record.overall_score = overall_avg
+            db.session.commit()
+
             radar_data = [
                 {"name": "技术能力", "value": tech_avg},
                 {"name": "知识深度", "value": depth_avg},
                 {"name": "逻辑表达", "value": logic_avg},
                 {"name": "岗位匹配", "value": match_avg}
             ]
-            
-            # 根据得分生成亮点和待改进项
-            strengths = []
-            weaknesses = []
-            
-            if tech_avg >= 7.0:
-                strengths.append("技术基础扎实，掌握核心概念")
-            else:
-                weaknesses.append("技术知识需要进一步加强")
-                
-            if depth_avg >= 7.0:
-                strengths.append("对技术原理有深入理解")
-            else:
-                weaknesses.append("知识深度有待提升")
-                
-            if logic_avg >= 7.0:
-                strengths.append("表达逻辑清晰，条理性强")
-            else:
-                weaknesses.append("表达条理性可以更好")
-                
-            if match_avg >= 7.0:
-                strengths.append("与岗位要求匹配度较高")
-            else:
-                weaknesses.append("需要更深入了解岗位要求")
-            
-            # 如果没有亮点，添加默认提示
-            if not strengths:
-                strengths.append("展现了一定的学习潜力")
-            
-            # 如果没有待改进项，添加鼓励
-            if not weaknesses:
-                weaknesses.append("继续保持现有优秀表现")
-            
-            # 生成详细建议
-            suggestions_text = self._get_suggestions(tech_avg, depth_avg, logic_avg, match_avg)
-            
-            # 构建详细建议列表
-            detailed_suggestions = []
-            if tech_avg < 7.0:
-                detailed_suggestions.append({
-                    "title": "技术知识提升",
-                    "description": "建议系统学习岗位相关的核心技术知识，夯实基础。",
-                    "resources": "《技术内幕》系列、官方文档、在线课程"
+
+            summary = llm_report.get('summary', '')
+            evaluation = llm_report.get('evaluation', '')
+            strengths = llm_report.get('strengths', [])
+            weaknesses = llm_report.get('weaknesses', [])
+            detailed_suggestions = llm_report.get('detailedSuggestions', [])
+
+            records = []
+            for i, qa in enumerate(qa_list, 1):
+                if i <= len(per_round):
+                    pr = per_round[i - 1]
+                    scores = [
+                        {"name": "技术", "value": pr.get('techScore', 0) or 0},
+                        {"name": "深度", "value": pr.get('depthScore', 0) or 0},
+                        {"name": "逻辑", "value": pr.get('logicScore', 0) or 0},
+                        {"name": "匹配", "value": pr.get('matchScore', 0) or 0}
+                    ]
+                    feedback = pr.get('feedback', '') or qa.feedback or "暂无反馈"
+                else:
+                    scores = [
+                        {"name": "技术", "value": qa.tech_score or 0},
+                        {"name": "深度", "value": qa.depth_score or 0},
+                        {"name": "逻辑", "value": qa.logic_score or 0},
+                        {"name": "匹配", "value": qa.match_score or 0}
+                    ]
+                    feedback = qa.feedback or "暂无反馈"
+
+                records.append({
+                    "round": i,
+                    "question": qa.question,
+                    "answer": qa.answer or "（未回答）",
+                    "scores": scores,
+                    "feedback": feedback
                 })
-            if depth_avg < 7.0:
-                detailed_suggestions.append({
-                    "title": "深入理解原理",
-                    "description": "不仅要会用，更要理解背后的原理和设计思想。",
-                    "resources": "《深入理解计算机系统》、技术博客、源码阅读"
-                })
-            if logic_avg < 7.0:
-                detailed_suggestions.append({
-                    "title": "逻辑表达能力",
-                    "description": "练习用清晰的逻辑表达复杂概念，提升沟通效率。",
-                    "resources": "《金字塔原理》、技术演讲视频、写作练习"
-                })
-            if match_avg < 7.0:
-                detailed_suggestions.append({
-                    "title": "岗位匹配提升",
-                    "description": "深入了解目标岗位的具体要求和公司技术栈。",
-                    "resources": "岗位JD分析、公司技术博客、行业报告"
-                })
-            
-            # 如果没有详细建议，添加通用建议
-            if not detailed_suggestions:
-                detailed_suggestions.append({
-                    "title": "持续学习成长",
-                    "description": "技术领域日新月异，建议保持持续学习的态度。",
-                    "resources": "技术社区、行业会议、在线学习平台"
-                })
-            
-            # 生成报告JSON
-            import json
+
             report = {
                 "interviewId": interview_id,
                 "position": record.position,
-                "positionName": record.position,  # 前端期望的字段
+                "positionName": position_display,
                 "startTime": record.start_time.isoformat() if record.start_time else None,
                 "endTime": record.end_time.isoformat() if record.end_time else None,
                 "interviewDate": record.start_time.isoformat() if record.start_time else None,
@@ -365,43 +454,86 @@ class InterviewService:
                     "match": match_avg
                 },
                 "overallScore": overall_avg,
-                "averageScore": overall_avg,  # 前端期望的字段
-                "evaluation": self._get_evaluation_text(overall_avg),
-                "summary": self._get_evaluation_text(overall_avg),  # 前端期望的字段
-                "suggestions": suggestions_text,
+                "averageScore": overall_avg,
+                "evaluation": evaluation,
+                "summary": summary,
+                "suggestions": detailed_suggestions,
                 "duration": duration_minutes,
                 "questionCount": question_count,
                 "radarData": radar_data,
                 "strengths": strengths,
                 "weaknesses": weaknesses,
-                "detailedSuggestions": detailed_suggestions
+                "detailedSuggestions": detailed_suggestions,
+                "records": records
             }
             
-            return json.dumps(report, ensure_ascii=False)
+            return report
             
         except Exception as e:
             logger.error(f"生成报告失败: {str(e)}")
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
     
-    def _get_evaluation_text(self, overall_score):
+    def _get_evaluation_text(self, overall_score, qa_pairs=None, position_display=None):
+        total = len(qa_pairs) if qa_pairs else 0
+        answered = sum(1 for qa in (qa_pairs or []) if qa.get('answer', '').strip() and qa.get('answer', '') != '（未回答）')
+
+        if total == 0:
+            return "本次面试未记录到有效的问答数据，无法生成评估。"
+
+        level = "优秀" if overall_score >= 9.0 else ("良好" if overall_score >= 7.0 else ("一般" if overall_score >= 5.0 else "待提高"))
+
+        text = f"综合评估：{level}（{overall_score:.1f}/10.0）。"
+
+        if qa_pairs:
+            topics = []
+            for qa in qa_pairs:
+                q = qa.get('question', '')
+                short = q[:60] + '...' if len(q) > 60 else q
+                topics.append(short)
+            text += f"面试共{total}轮，涉及话题：{'；'.join(topics[:5])}。"
+
+        if answered < total and total > 1:
+            text += f"其中{total - answered}个问题未获得有效回答。"
+
         if overall_score >= 9.0:
-            return "优秀：表现非常出色，技术扎实，表达清晰。"
+            text += "候选人在面试中展现出扎实的技术功底和优秀的表达能力，各轮回答均有具体技术细节支撑。"
         elif overall_score >= 7.0:
-            return "良好：表现良好，具备岗位所需基本能力。"
+            text += "候选人具备岗位所需的基本能力，部分回答有深度，但仍有提升空间。"
         elif overall_score >= 5.0:
-            return "一般：基本合格，但有提升空间。"
+            text += "候选人基本合格，但需要在核心技术理解和表达方面进一步加强。"
         else:
-            return "待提高：需要加强技术学习和表达能力。"
-    
-    def _get_suggestions(self, tech_score, depth_score, logic_score, match_score):
+            text += "建议候选人加强核心技术学习，提升表达的逻辑性和条理性。"
+
+        return text
+
+    def _get_position_display_name(self, position):
+        position_map = {
+            'java_backend': 'Java后端开发工程师',
+            'web_frontend': 'Web前端开发工程师',
+            'fullstack_engineer': '全栈工程师',
+            'bigdata_engineer': '大数据工程师'
+        }
+        return position_map.get(position, position or '技术面试')
+
+    def _get_suggestions(self, tech_score, depth_score, logic_score, match_score, qa_pairs=None, position_display=None):
         suggestions = []
+
+        if qa_pairs:
+            unanswered = [qa for qa in qa_pairs if not qa.get('answer', '').strip() or qa.get('answer', '') == '（未回答）']
+            if unanswered:
+                missed_topics = [qa.get('question', '')[:50] for qa in unanswered[:3]]
+                suggestions.append(f"需要补充回答以下问题：{'；'.join(missed_topics)}。")
+
         if tech_score < 7.0:
-            suggestions.append("建议加强技术基础知识学习。")
+            suggestions.append("建议加强技术基础知识学习，重点掌握核心概念和原理。")
         if depth_score < 7.0:
-            suggestions.append("建议深入理解技术原理和底层机制。")
+            suggestions.append("建议深入理解技术原理和底层机制，不仅回答\"是什么\"，还要解释\"为什么\"。")
         if logic_score < 7.0:
-            suggestions.append("建议提高表达的逻辑性和条理性。")
+            suggestions.append("建议提高表达的逻辑性和条理性，可使用STAR法则组织回答。")
         if match_score < 7.0:
-            suggestions.append("建议更好地理解岗位要求和公司文化。")
-        
-        return " ".join(suggestions) if suggestions else "继续努力，保持优秀表现。"
+            suggestions.append("建议更好地理解岗位要求，在回答中体现与岗位的匹配度。")
+
+        if not suggestions:
+            suggestions.append("整体表现良好，建议持续学习和实践，保持技术竞争力。")
+
+        return " ".join(suggestions)

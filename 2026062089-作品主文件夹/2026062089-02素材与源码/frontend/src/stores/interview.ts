@@ -234,7 +234,7 @@ export const useInterviewStore = defineStore('interview', () => {
     }
   }
 
-  const endInterview = async () => {
+  const endInterview = async (conversation?: { role: string; content: string }[]) => {
     if (!interviewId.value) {
       throw new Error('没有活跃的面试')
     }
@@ -242,23 +242,13 @@ export const useInterviewStore = defineStore('interview', () => {
     try {
       isLoading.value = true
       console.log(`正在结束面试 ${interviewId.value}...`)
-      const result = await interviewApi.endInterview(interviewId.value)
+      const result = await interviewApi.endInterview(interviewId.value, conversation)
       console.log('结束面试API调用成功:', result)
       finished.value = true
-      try {
-        ElMessage.success('面试已结束')
-      } catch (msgErr) {
-        console.warn('显示成功消息失败，但面试已结束:', msgErr)
-      }
       return result
     } catch (err) {
       console.error('结束面试API调用失败:', err)
       error.value = '结束面试失败'
-      try {
-        ElMessage.error('结束面试失败')
-      } catch (msgErr) {
-        console.warn('显示错误消息失败:', msgErr)
-      }
       throw err
     } finally {
       isLoading.value = false

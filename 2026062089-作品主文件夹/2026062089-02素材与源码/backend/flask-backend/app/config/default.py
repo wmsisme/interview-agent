@@ -32,11 +32,19 @@ RAG_MODE = os.environ.get('RAG_MODE', 'local')  # 'local' 或 'http'
 
 # LLM配置 - 用于问题生成和评估（使用千问文本API）
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'tongyi')  # 使用千问文本API
-LLM_API_KEY = os.environ.get('LLM_API_KEY', 'REMOVED_API_KEY')  # 使用与视频聊天相同的API密钥
+DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY', 'REMOVED_API_KEY')
+LLM_API_KEY = DASHSCOPE_API_KEY
 
 # 千问文本API配置（通义千问）
 TONGYI_URL = os.environ.get('TONGYI_URL', 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation')
 TONGYI_MODEL = os.environ.get('TONGYI_MODEL', 'qwen-plus')
+
+# OpenAI兼容API - qwen3.6-max-preview 等新模型需通过此接口调用
+COMPATIBLE_URL = os.environ.get('COMPATIBLE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions')
+
+# 报告生成 - DeepSeek v4-flash 为主模型，qwen-plus 为降级兜底
+DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-v4-flash')
+REPORT_MODEL = os.environ.get('REPORT_MODEL', 'qwen-plus')
 
 # 计算绝对路径
 CHROMA_DB_RELATIVE = os.environ.get('CHROMA_DB_PATH', '../../chroma_db')
@@ -46,7 +54,7 @@ CHROMA_DB_PATH = os.path.abspath(os.path.join(BASE_DIR, CHROMA_DB_RELATIVE))
 EMBEDDING_MODEL_PATH = os.path.abspath(os.path.join(BASE_DIR, EMBEDDING_MODEL_RELATIVE))
 
 # Qwen-Omni配置
-QWEN_OMNI_API_KEY = os.environ.get('QWEN_OMNI_API_KEY', 'REMOVED_API_KEY')
+QWEN_OMNI_API_KEY = os.environ.get('QWEN_OMNI_API_KEY', DASHSCOPE_API_KEY)
 QWEN_OMNI_MODEL = os.environ.get('QWEN_OMNI_MODEL', 'qwen3.5-omni-plus-realtime')
 QWEN_OMNI_WS_URL = os.environ.get('QWEN_OMNI_WS_URL', 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime')
 QWEN_OMNI_VOICE = os.environ.get('QWEN_OMNI_VOICE', 'Ethan')

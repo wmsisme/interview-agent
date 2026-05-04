@@ -50,20 +50,36 @@ export const submitAudioAnswer = (interviewId: number, questionId: number, audio
   formData.append('questionId', questionId.toString())
   formData.append('audio', audioBlob, 'recording.webm')
   return request.post<EvaluationResult>('/interview/answer/audio', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
   })
 }
 
-export const endInterview = (interviewId: number) => {
-  return request.post(`/interview/end/${interviewId}`)
+export const endInterview = (interviewId: number, conversation?: { role: string; content: string }[]) => {
+  return request.post(`/interview/end/${interviewId}`, {
+    conversation: conversation || []
+  }, {
+    timeout: 90000
+  })
+}
+
+export const saveConversation = (interviewId: number, conversation: { role: string; content: string }[]) => {
+  return request.post(`/interview/conversation/${interviewId}`, {
+    conversation
+  }, {
+    timeout: 30000
+  })
 }
 
 export const getReport = (interviewId: number) => {
-  return request.get<string>(`/interview/report/${interviewId}`)
+  return request.get<string>(`/interview/report/${interviewId}`, {
+    timeout: 30000
+  })
 }
 
 export const downloadReportPdf = (interviewId: number) => {
   return request.get(`/interview/report/pdf/${interviewId}`, {
-    responseType: 'blob'
+    responseType: 'blob',
+    timeout: 90000
   })
 }

@@ -140,6 +140,15 @@ class VideoInterviewWebSocketHandler:
                 "requirements": self._get_position_requirements(self.position)
             }
             
+            # 清理旧的视频会话（如果有），避免 DashScope "connection is already closed"
+            if self.video_session:
+                try:
+                    self.video_session.stop()
+                except Exception:
+                    pass
+                self.video_session = None
+            video_chat_service.remove_session(self.session_id)
+            
             self.video_session = video_chat_service.create_session(
                 self.session_id, 
                 self.interview_id,
@@ -265,10 +274,11 @@ class VideoInterviewWebSocketHandler:
                 self.video_session.stop()
                 self.is_active = False
             
-            # 更新面试记录结束时间
-            if self.interview_record and self.interview_id:
-                interview_service.update_interview_end_time(self.interview_id)
-                logger.info(f"面试记录已更新: {self.interview_id}")
+            # 调用end_interview生成报告（包含设置end_time）
+            if self.interview_id:
+                logger.info(f"[WebSocket] 调用end_interview生成报告: interview_id={self.interview_id}")
+                self.interview_record = interview_service.end_interview(int(self.interview_id))
+                logger.info(f"[WebSocket] 面试记录已结束并生成报告: {self.interview_id}")
             
             # 清理会话
             if self.session_id in active_sessions:
@@ -317,6 +327,11 @@ class VideoInterviewWebSocketHandler:
         """处理AI响应完成"""
         try:
             logger.info(f"[WebSocket] 向前端发送response_done: session={self.session_id}")
+            if self.video_session:
+                self.video_session.ai_is_speaking = False
+                self.video_session.ai_speaking_done_at = time.time()
+                self.video_session.ai_speaking_started_at = 0.0
+                logger.info(f"[WebSocket] AI说话状态已释放，冷却开始: session={self.session_id}")
             self._queue_event_to_client('response_done', {
                 'sessionId': self.session_id
             })

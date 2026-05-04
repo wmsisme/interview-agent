@@ -128,17 +128,7 @@
               <el-icon><VideoCameraFilled /></el-icon>
               关闭摄像头
             </el-button>
-            <el-button 
-              :type="microphoneActive ? 'warning' : 'primary'" 
-              @click="toggleMicrophone"
-            >
-              <el-icon><Microphone /></el-icon>
-              {{ microphoneActive ? '关闭麦克风' : '开启麦克风' }}
-            </el-button>
-            <div class="audio-hint" v-if="microphoneActive">
-              <el-icon><InfoFilled /></el-icon>
-              <span>建议使用耳机以避免回音</span>
-            </div>
+
           </div>
 
           <div v-if="showDebugPanel" class="debug-panel">
@@ -249,11 +239,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Connection, Close, VideoCamera, VideoCameraFilled, 
-  Microphone, VideoPlay, InfoFilled 
+  Microphone, VideoPlay
 } from '@element-plus/icons-vue'
 import { useInterviewStore } from '@/stores/interview'
 import { useUserStore } from '@/stores/user'
 import type { InterviewMessage } from '@/stores/interview'
+import * as interviewApi from '@/api/interview'
 import { io, Socket } from 'socket.io-client'
 import { SOCKET_HTTP_BASE_URL } from '@/config/runtime'
 import { getQwenAudioProcessor } from '@/utils/qwen_audio'
@@ -691,17 +682,6 @@ const stopCamera = () => {
   ElMessage.info('摄像头和麦克风已关闭')
 }
 
-const toggleMicrophone = () => {
-  if (localStream) {
-    const audioTracks = localStream.getAudioTracks()
-    audioTracks.forEach(track => {
-      track.enabled = !track.enabled
-    })
-    microphoneActive.value = audioTracks[0]?.enabled || false
-    ElMessage.info(`麦克风已${microphoneActive.value ? '开启' : '关闭'}`)
-  }
-}
-
 // 音频流处理函数
 const startAudioStreaming = async () => {
   if (!localStream || !videoSocket) {
@@ -885,16 +865,21 @@ const startAudioStreaming = async () => {
   }
 }
 
+// 音频缓冲区溢出警告节流
+let lastBufferWarnTime = 0
+
 // 处理音频块，限制缓冲区大小避免延迟累积
 const processAudioChunk = (int16Array: Int16Array, source: string) => {
-  // 限制缓冲区最大大小，避免延迟累积
-  const MAX_BUFFER_SAMPLES = AUDIO_CHUNK_SAMPLES * 8 // 最多缓存200ms的音频数据
+  const MAX_BUFFER_SAMPLES = AUDIO_CHUNK_SAMPLES * 25
   
-  // 如果缓冲区过大，丢弃旧数据，保留最新的数据
   if (audioBuffer.length > MAX_BUFFER_SAMPLES) {
     const excessSamples = audioBuffer.length - MAX_BUFFER_SAMPLES
     audioBuffer = audioBuffer.slice(excessSamples)
-    console.warn(`音频缓冲区过大(${audioBuffer.length + excessSamples}样本)，丢弃${excessSamples}个旧样本`)
+    const now = Date.now()
+    if (now - lastBufferWarnTime > 30000 && excessSamples > AUDIO_CHUNK_SAMPLES) {
+      lastBufferWarnTime = now
+      console.warn(`音频缓冲区过大(${audioBuffer.length + excessSamples}样本)，丢弃${excessSamples}个旧样本`)
+    }
   }
   
   // 追加新数据到缓冲区
@@ -903,22 +888,21 @@ const processAudioChunk = (int16Array: Int16Array, source: string) => {
   newBuffer.set(int16Array, audioBuffer.length)
   audioBuffer = newBuffer
   
-  // 立即发送音频数据，而不是等待定时器，减少延迟
-  if (audioBuffer.length >= AUDIO_CHUNK_SAMPLES && videoSocket?.connected) {
-    // 提取一个音频块
+  // 循环排空可发送的音频块，避免数据累积
+  while (audioBuffer.length >= AUDIO_CHUNK_SAMPLES && videoSocket?.connected) {
+    if (isPlayingAudio.value || Date.now() < aiSpeechBlockUntil) {
+      break
+    }
     const chunk = audioBuffer.slice(0, AUDIO_CHUNK_SAMPLES)
     const sliceBuffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)
     const byteArray = new Uint8Array(sliceBuffer)
     
-    // 只有在AI没有说话时才发送用户语音
-    if (!isPlayingAudio.value && Date.now() >= aiSpeechBlockUntil) {
-      try {
-        videoSocket.emit('audio', byteArray.buffer)
-        // 从缓冲区移除已发送的数据
-        audioBuffer = audioBuffer.slice(AUDIO_CHUNK_SAMPLES)
-      } catch (error) {
-        console.warn(`实时发送音频失败(${source})，连接可能已关闭:`, error)
-      }
+    try {
+      videoSocket.emit('audio', byteArray.buffer)
+      audioBuffer = audioBuffer.slice(AUDIO_CHUNK_SAMPLES)
+    } catch (error) {
+      console.warn(`实时发送音频失败(${source})，连接可能已关闭:`, error)
+      break
     }
   }
   
@@ -1063,6 +1047,13 @@ const startVideoInterview = async () => {
 
 const connectVideoSocket = (interviewId: string): Promise<void> => {
   return new Promise((resolve, reject) => {
+    if (videoSocket) {
+      console.log('清理旧的Socket.IO连接')
+      videoSocket.removeAllListeners()
+      videoSocket.disconnect()
+      videoSocket = null
+    }
+    
     videoSocket = io(SOCKET_HTTP_BASE_URL + '/ws/video', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
@@ -1206,7 +1197,8 @@ const handleSocketMessage = (data: any) => {
         break
       }
       modelStatusText.value = '已收到AI音频'
-      aiSpeechBlockUntil = Date.now() + 800
+      aiSpeechBlockUntil = Date.now() + 2000
+      isPlayingAudio.value = true
       pushDebugLog(`received ai audio chunk length=${(data.data || '').length}`)
       playAIAudio(data.data)
       break
@@ -1220,13 +1212,17 @@ const handleSocketMessage = (data: any) => {
     case 'response_done':
       // AI响应完成
       modelStatusText.value = '本轮响应完成'
-      aiSpeechBlockUntil = Date.now() + 1200
+      aiSpeechBlockUntil = Date.now() + 3000
       if (pendingAiTranscript.trim()) {
         addMessage('ai', pendingAiTranscript.trim())
         currentSubtitle.value = pendingAiTranscript.trim()
       }
       pendingAiTranscript = ''
-      isPlayingAudio.value = false
+      setTimeout(() => {
+        if (Date.now() >= aiSpeechBlockUntil) {
+          isPlayingAudio.value = false
+        }
+      }, 3000)
       break
     case 'user_text':
       pushDebugLog(`received user text: ${String(data.data || '').slice(0, 30)}`)
@@ -1359,18 +1355,20 @@ const endInterview = async () => {
     })
     
     loading.value = true
+    finished.value = true
+    interviewStarted.value = false
+    videoConnected.value = false
     console.log('正在结束视频面试，清理资源...')
     
-    // 发送停止消息
+    // 发送停止消息（不等待响应）
     if (videoSocket && videoSocket.connected) {
       videoSocket.emit('stop_interview', {})
       console.log('已发送stop_interview事件')
     }
     
-    // 立即停止音频和视频流
+    // 立即停止音频和视频流（同步操作，不阻塞）
     mediaStreamingStarted = false
     stopAudioStreaming()
-    // 停止AI音频播放
     isPlayingAudio.value = false
     aiAudioProcessor.destroy()
     
@@ -1387,14 +1385,18 @@ const endInterview = async () => {
       console.log('已断开WebSocket连接')
     }
     
-    // 更新面试记录
-    if (interviewStore.interviewId) {
+    // 将对话数据和结束请求合并为一次API调用
+    if (interviewStore.interviewId && messages.value.length > 0) {
+      const conversationData = messages.value.map(m => ({
+        role: m.role,
+        content: m.content
+      }))
+      console.log('正在结束面试并保存对话记录，共', conversationData.length, '条')
+      await interviewStore.endInterview(conversationData)
+      console.log('面试结束完成')
+    } else if (interviewStore.interviewId) {
       await interviewStore.endInterview()
     }
-    
-    finished.value = true
-    interviewStarted.value = false
-    videoConnected.value = false
     
     ElMessage.success('视频面试已结束')
     console.log('视频面试资源清理完成')

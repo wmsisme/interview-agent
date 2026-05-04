@@ -9,7 +9,7 @@
           </div>
         </template>
         <template #extra>
-          <el-button type="primary" @click="downloadReport">下载报告</el-button>
+          <el-button type="primary" @click="downloadReport" :loading="downloading">下载报告</el-button>
           <el-button @click="goHome">返回首页</el-button>
         </template>
       </el-page-header>
@@ -22,7 +22,7 @@
           <div class="summary-content">
             <div class="overall-score">
               <div class="score-circle">
-                <span class="score-value">{{ reportData.overallScore }}</span>
+                <span class="score-value">{{ Number(reportData.overallScore).toFixed(1) }}</span>
                 <span class="score-label">综合得分</span>
               </div>
             </div>
@@ -40,7 +40,7 @@
                 </div>
                 <div class="stat-item">
                   <span class="stat-label">平均得分</span>
-                  <span class="stat-value">{{ reportData.averageScore }}/10</span>
+                  <span class="stat-value">{{ Number(reportData.averageScore).toFixed(1) }}/10</span>
                 </div>
               </div>
             </div>
@@ -63,7 +63,7 @@
             <div v-for="item in reportData.radarData" :key="item.name" class="legend-item">
               <span class="legend-color" :style="{ backgroundColor: getColorForScore(item.value) }"></span>
               <span class="legend-name">{{ item.name }}</span>
-              <span class="legend-score">{{ item.value }}/10</span>
+              <span class="legend-score">{{ Number(item.value).toFixed(1) }}/10</span>
             </div>
           </div>
         </el-card>
@@ -156,7 +156,7 @@
                     :type="getScoreTagType(score.value)"
                     size="small"
                   >
-                    {{ score.name }}: {{ score.value }}/10
+                    {{ score.name }}: {{ Number(score.value).toFixed(1) }}/10
                   </el-tag>
                 </div>
                 <p class="record-feedback">{{ record.feedback }}</p>
@@ -173,10 +173,21 @@
       </div>
     </div>
 
-    <div v-else class="loading-state">
+    <div v-else-if="loading" class="loading-state">
       <el-result icon="info" title="报告加载中...">
         <template #extra>
           <el-button type="primary" @click="goHome">返回首页</el-button>
+        </template>
+      </el-result>
+    </div>
+    <div v-else class="loading-state">
+      <el-result icon="error" title="报告加载失败">
+        <template #sub-title>
+          <span>无法获取面试报告数据，请检查后端服务状态</span>
+        </template>
+        <template #extra>
+          <el-button type="primary" @click="loadReport">重新加载</el-button>
+          <el-button @click="goHome">返回首页</el-button>
         </template>
       </el-result>
     </div>
@@ -197,6 +208,7 @@ const router = useRouter()
 
 const reportData = ref<any>(null)
 const loading = ref(true)
+const downloading = ref(false)
 
 const loadReport = async () => {
   const interviewId = route.params.id as string
@@ -209,51 +221,41 @@ const loadReport = async () => {
   try {
     loading.value = true
     
-    // 清除之前的报告数据
     reportData.value = null
     
-    // 尝试从API获取报告数据
     const response = await getReport(parseInt(interviewId))
     
-    // 假设API返回JSON字符串或直接是对象
-    // 如果是字符串，尝试解析
     let report
     if (typeof response === 'string') {
       try {
         report = JSON.parse(response)
       } catch {
-        // 如果不是JSON，可能是文本报告
-        report = {
-          interviewId: parseInt(interviewId),
-          positionName: '面试报告',
-          overallScore: 0,
-          summary: response || '暂无报告内容',
-          duration: 0,
-          questionCount: 0,
-          averageScore: 0,
-          interviewDate: new Date().toISOString(),
-          radarData: [],
-          strengths: [],
-          weaknesses: [],
-          suggestions: [],
-          records: []
-        }
+        ElMessage.error('报告数据格式异常')
+        reportData.value = null
+        return
       }
-    } else {
+    } else if (response && typeof response === 'object') {
       report = response
+    } else {
+      ElMessage.error('未能获取到报告数据')
+      reportData.value = null
+      return
     }
     
-    // 获取雷达数据，如果为空则使用默认数据
+    if (!report || typeof report !== 'object') {
+      ElMessage.error('报告数据无效')
+      reportData.value = null
+      return
+    }
+    
     const getRadarData = () => {
       if (report.radarData && Array.isArray(report.radarData) && report.radarData.length > 0) {
-        // 确保每个雷达数据项的value是数字
         return report.radarData.map((item: any) => ({
           name: item.name || '未知',
           value: Number(item.value) || 0,
           max: item.max ? Number(item.max) : 10
         }))
       }
-      // 使用默认雷达数据
       const defaultScore = Number(report.overallScore) || 0
       return [
         { name: '技术能力', value: defaultScore },
@@ -263,93 +265,26 @@ const loadReport = async () => {
       ]
     }
     
-    // 确保报告数据有基本结构
     reportData.value = {
       interviewId: parseInt(interviewId),
-      positionName: report.positionName || '面试报告',
+      positionName: report.positionName || report.position || '面试报告',
       overallScore: Number(report.overallScore) || 0,
-      summary: report.summary || '暂无报告摘要',
+      summary: report.summary || report.evaluation || '暂无报告摘要',
       duration: Number(report.duration) || 0,
       questionCount: Number(report.questionCount) || 0,
       averageScore: Number(report.averageScore) || 0,
-      interviewDate: report.interviewDate || new Date().toISOString(),
+      interviewDate: report.interviewDate || report.startTime || new Date().toISOString(),
       radarData: getRadarData(),
       strengths: report.strengths || [],
       weaknesses: report.weaknesses || [],
-      suggestions: report.suggestions || [],
+      suggestions: report.suggestions || report.detailedSuggestions || [],
       records: report.records || []
     }
     
   } catch (error) {
     console.error('加载报告失败:', error)
-    
-    // API失败时使用模拟数据（仅用于演示）
-    ElMessage.warning('报告API暂时不可用，显示示例报告')
-    reportData.value = {
-      interviewId: parseInt(interviewId),
-      positionName: 'Java后端开发工程师',
-      overallScore: 82,
-      summary: '您在本次面试中展现了扎实的Java基础和良好的逻辑思维能力，但在分布式系统和高并发场景下的实践经验有待加强。',
-      duration: 25,
-      questionCount: 8,
-      averageScore: 8.2,
-      interviewDate: new Date().toISOString(),
-      radarData: [
-        { name: '技术能力', value: 8.5 },
-        { name: '知识深度', value: 7.8 },
-        { name: '逻辑表达', value: 8.2 },
-        { name: '岗位匹配', value: 8.0 }
-      ],
-      strengths: [
-        'Java基础扎实，对集合框架、多线程等核心概念理解透彻',
-        '代码逻辑清晰，问题分析能力较强',
-        '对Spring框架有一定了解，能够回答基本使用问题'
-      ],
-      weaknesses: [
-        '分布式系统设计经验不足，对微服务架构理解不够深入',
-        '高并发场景下的性能优化经验较少',
-        '对JVM调优和内存管理了解不够全面'
-      ],
-      suggestions: [
-        {
-          title: '深入学习分布式系统',
-          description: '建议学习分布式事务、服务治理、分布式缓存等核心概念，可以阅读《分布式系统概念与设计》等经典书籍。',
-          resources: '《分布式系统概念与设计》、MIT 6.824课程'
-        },
-        {
-          title: '掌握JVM性能调优',
-          description: '深入理解JVM内存结构、垃圾回收机制，学习使用JVM监控工具进行性能分析和调优。',
-          resources: '《深入理解Java虚拟机》、Arthas工具'
-        },
-        {
-          title: '积累高并发实践经验',
-          description: '通过实际项目或模拟场景练习高并发系统的设计和优化，学习限流、降级、熔断等保障策略。',
-          resources: '《Java并发编程实战》、压测工具JMeter'
-        }
-      ],
-      records: [
-        {
-          question: '请解释HashMap的工作原理',
-          answer: 'HashMap是基于哈希表实现的Map接口，它使用数组和链表（或红黑树）的组合结构...',
-          scores: [
-            { name: '技术', value: 9 },
-            { name: '深度', value: 8 },
-            { name: '逻辑', value: 8 }
-          ],
-          feedback: '回答准确，但对红黑树转换条件和哈希冲突解决细节可以进一步深入。'
-        },
-        {
-          question: 'Spring Bean的生命周期是怎样的？',
-          answer: 'Spring Bean的生命周期包括实例化、属性赋值、初始化、使用和销毁等阶段...',
-          scores: [
-            { name: '技术', value: 8 },
-            { name: '深度', value: 7 },
-            { name: '逻辑', value: 8 }
-          ],
-          feedback: '基本流程正确，但对后置处理器和AOP代理的时机描述不够详细。'
-        }
-      ]
-    }
+    ElMessage.error('加载报告失败，请检查后端服务是否正常运行')
+    reportData.value = null
   } finally {
     loading.value = false
   }
@@ -395,37 +330,30 @@ const downloadReport = async () => {
   }
 
   try {
-    ElMessage.info('正在生成PDF报告，请稍候...')
+    downloading.value = true
+    ElMessage.info('正在准备下载报告，请稍候...')
     
-    // 调用PDF下载API
     const response = await downloadReportPdf(parseInt(interviewId))
     
-    // 创建Blob对象
     let blob: Blob
     const responseData = response.data
     if (responseData instanceof Blob) {
-      // response.data已经是Blob对象
       blob = responseData
     } else {
-      // 回退到原始方法
       blob = new Blob([responseData || response], { type: 'application/pdf' })
     }
     
-    // 创建下载链接
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     
-    // 设置文件名
     const position = reportData.value?.positionName || '面试报告'
     const filename = `面试报告_${position}_${interviewId}.pdf`
     link.download = filename
     
-    // 触发下载
     document.body.appendChild(link)
     link.click()
     
-    // 清理
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
     
@@ -434,6 +362,8 @@ const downloadReport = async () => {
   } catch (error) {
     console.error('下载报告失败:', error)
     ElMessage.error('报告下载失败，请稍后重试')
+  } finally {
+    downloading.value = false
   }
 }
 

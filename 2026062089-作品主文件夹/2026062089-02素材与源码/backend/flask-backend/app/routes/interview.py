@@ -1,4 +1,5 @@
 import logging
+import json
 import urllib.parse
 from flask import Blueprint, request, jsonify, Response
 from ..utils.response import success, error, bad_request
@@ -61,14 +62,44 @@ def submit_audio_answer():
 @bp.route('/end/<int:interview_id>', methods=['POST'])
 def end_interview(interview_id):
     try:
+        data = request.get_json(silent=True) or {}
+        conversation = data.get('conversation', [])
+        if conversation:
+            interview_service.save_conversation(interview_id, conversation)
         result = interview_service.end_interview(interview_id)
         return success(result)
+    except Exception as e:
+        return error(str(e))
+
+@bp.route('/conversation/<int:interview_id>', methods=['POST'])
+def save_conversation(interview_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return bad_request('Request body is required')
+        conversation = data.get('conversation', [])
+        if not conversation:
+            return bad_request('conversation is required')
+        interview_service.save_conversation(interview_id, conversation)
+        return success({'saved': len(conversation)})
     except Exception as e:
         return error(str(e))
 
 @bp.route('/report/<int:interview_id>', methods=['GET'])
 def get_report(interview_id):
     try:
+        record = InterviewRecord.query.get(interview_id)
+        if not record:
+            return error('面试记录不存在')
+        
+        if record.report:
+            try:
+                report = json.loads(record.report)
+                logger.info(f"[Report] 使用缓存的面试报告: interview_id={interview_id}")
+                return success(report)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"[Report] 缓存报告JSON解析失败，重新生成: interview_id={interview_id}")
+        
         report = interview_service.generate_report(interview_id)
         return success(report)
     except Exception as e:
@@ -78,81 +109,49 @@ def get_report(interview_id):
 def download_report_pdf(interview_id):
     """下载面试报告PDF"""
     try:
-        # 生成报告数据
-        report_json = interview_service.generate_report(interview_id)
-        
-        # 如果是字符串形式的JSON，解析为字典
-        if isinstance(report_json, str):
-            import json
-            report_data = json.loads(report_json)
-        else:
-            report_data = report_json
-        
-        # 获取面试记录，填充更多数据
         record = InterviewRecord.query.get(interview_id)
-        if record:
-            # 计算面试时长（分钟）
-            if record.start_time and record.end_time:
-                duration_seconds = (record.end_time - record.start_time).total_seconds()
-                duration_minutes = int(duration_seconds / 60)
-                report_data['duration'] = duration_minutes
-            else:
-                report_data['duration'] = 0
-            
-            # 获取问题数量
+        if not record:
+            return error('面试记录不存在')
+        
+        report_data = None
+        if record.report:
+            try:
+                report_data = json.loads(record.report)
+                logger.info(f"[PDF] 使用缓存的面试报告: interview_id={interview_id}")
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"[PDF] 缓存报告JSON解析失败，重新生成: interview_id={interview_id}")
+        
+        if not report_data:
+            report_data = interview_service.generate_report(interview_id)
+        
+        if record.start_time and record.end_time:
+            duration_seconds = (record.end_time - record.start_time).total_seconds()
+            duration_minutes = int(duration_seconds / 60)
+            report_data['duration'] = duration_minutes
+        elif 'duration' not in report_data:
+            report_data['duration'] = 0
+
+        if 'questionCount' not in report_data or not report_data.get('questionCount'):
             question_count = QuestionAnswer.query.filter_by(interview_id=interview_id).count()
             report_data['questionCount'] = question_count
-            
-            # 获取详细建议（如果有）
-            if 'suggestions' in report_data and isinstance(report_data['suggestions'], str):
-                report_data['detailedSuggestions'] = [
-                    {"title": "技术提升", "description": report_data['suggestions'], "resources": "相关学习资源"}
-                ]
-        
-        # 设置默认值
-        if 'strengths' not in report_data:
-            # 根据得分生成亮点
-            scores = report_data.get('scores', {})
-            strengths = []
-            if scores.get('technical', 0) >= 7.0:
-                strengths.append("技术基础扎实")
-            if scores.get('logic', 0) >= 7.0:
-                strengths.append("表达逻辑清晰")
-            if scores.get('match', 0) >= 7.0:
-                strengths.append("岗位匹配度较高")
-            report_data['strengths'] = strengths
-        
-        if 'weaknesses' not in report_data:
-            # 根据得分生成待改进项
-            scores = report_data.get('scores', {})
-            weaknesses = []
-            if scores.get('technical', 0) < 7.0:
-                weaknesses.append("技术知识需要进一步加强")
-            if scores.get('depth', 0) < 7.0:
-                weaknesses.append("知识深度有待提升")
-            if scores.get('logic', 0) < 7.0:
-                weaknesses.append("表达条理性可以更好")
-            if scores.get('match', 0) < 7.0:
-                weaknesses.append("需要更深入了解岗位要求")
-            report_data['weaknesses'] = weaknesses
-        
-        # 获取面试记录详情
-        qa_list = QuestionAnswer.query.filter_by(interview_id=interview_id).all()
-        records = []
-        for i, qa in enumerate(qa_list, 1):
-            record_item = {
-                'question': qa.question,
-                'answer': qa.answer or "暂无回答",
-                'scores': [
-                    {'name': '技术', 'value': qa.tech_score or 0},
-                    {'name': '深度', 'value': qa.depth_score or 0},
-                    {'name': '逻辑', 'value': qa.logic_score or 0},
-                    {'name': '匹配', 'value': qa.match_score or 0}
-                ],
-                'feedback': qa.feedback or "暂无反馈"
-            }
-            records.append(record_item)
-        report_data['records'] = records
+
+        if 'records' not in report_data or not report_data.get('records'):
+            qa_list = QuestionAnswer.query.filter_by(interview_id=interview_id).all()
+            records = []
+            for i, qa in enumerate(qa_list, 1):
+                records.append({
+                    'round': i,
+                    'question': qa.question,
+                    'answer': qa.answer or "暂无回答",
+                    'scores': [
+                        {'name': '技术', 'value': qa.tech_score or 0},
+                        {'name': '深度', 'value': qa.depth_score or 0},
+                        {'name': '逻辑', 'value': qa.logic_score or 0},
+                        {'name': '匹配', 'value': qa.match_score or 0}
+                    ],
+                    'feedback': qa.feedback or "暂无反馈"
+                })
+            report_data['records'] = records
         
         # 生成PDF
         pdf_content = pdf_service.generate_interview_report_pdf(report_data)

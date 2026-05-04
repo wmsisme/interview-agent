@@ -28,9 +28,12 @@ _last_media_detail_log_times = {
     'image_send': 0.0,
     'warmup': 0.0,
 }
-MANUAL_TURN_SILENCE_SECONDS = 1.1
-MANUAL_TURN_MIN_SPEECH_SECONDS = 0.55
-PCM_SPEECH_THRESHOLD = 700
+MANUAL_TURN_SILENCE_SECONDS = 1.5
+MANUAL_TURN_MIN_SPEECH_SECONDS = 0.8
+PCM_SPEECH_THRESHOLD = 1200
+MIN_RESPONSE_INTERVAL = 3.0
+AI_SPEECH_COOLDOWN_AFTER_DONE = 2.0
+AI_SPEECH_MAX_DURATION = 30.0
 
 
 def _should_log_media_detail(kind: str) -> bool:
@@ -326,6 +329,9 @@ class VideoInterviewSession:
         self.manual_turn_active = False
         self.manual_turn_started_at = 0.0
         self.manual_turn_last_voice_at = 0.0
+        self.ai_is_speaking = False
+        self.ai_speaking_done_at = 0.0
+        self.ai_speaking_started_at = 0.0
         
         # RAG集成
         self.rag_integration = None
@@ -427,13 +433,21 @@ class VideoInterviewSession:
         
     def _build_instructions(self) -> str:
         """构建系统提示词"""
-        # 使用简单直接的指令，类似于测试文件
         if self.position:
-            instructions = f"""你是一个AI面试官，正在进行视频面试。你可以看到候选人的视频画面。
+            instructions = f"""你是一个专业的{self.position}岗位的AI面试官，正在进行视频面试。你可以看到候选人的视频画面。
 
-请立即开始面试，不要等待任何用户输入。你的第一句话必须是："你好，我是面试官，我们现在开始面试。"
+【核心原则 - 必须严格遵守】
+1. 你只负责提问和评估，绝对不要回答自己提出的问题
+2. 每次只提出一个问题，等待候选人回答后再继续
+3. 不要在问题中暗示答案、给出选项或自己解释答案
+4. 保持面试官的角色定位：提问 → 倾听 → 追问，不要变成"讲解者"
+5. 如果候选人回答不完整，请通过追问引导，而不是直接补充答案
 
-然后根据{self.position}岗位的要求开始提问。"""
+【面试流程】
+1. 第一句话必须是："你好，我是面试官，我们现在开始面试。"
+2. 然后根据{self.position}岗位的要求，逐轮提出面试问题
+3. 根据候选人的回答质量，灵活调整问题难度和方向"""
+
         else:
             instructions = """你是一个AI助手，正在进行测试。你可以看到视频画面。
 
@@ -499,7 +513,10 @@ class VideoInterviewSession:
                 output_modalities=[MultiModality.AUDIO, MultiModality.TEXT]
             )
             self.initial_response_requested = True
-            logger.info("✅ [VideoChat] 首轮response.create已发送")
+            self.ai_is_speaking = True
+            self.ai_speaking_started_at = time.time()
+            self.last_user_response_request_at = time.time()
+            logger.info("✅ [VideoChat] 首轮response.create已发送，AI说话状态已锁定")
         except Exception as e:
             logger.warning(f"⚠️ [VideoChat] 显式触发首轮回复失败: {e}")
 
@@ -596,9 +613,30 @@ class VideoInterviewSession:
             return
 
         now = time.time()
+
+        if self.ai_is_speaking:
+            if self.ai_speaking_started_at > 0 and now - self.ai_speaking_started_at > AI_SPEECH_MAX_DURATION:
+                logger.warning(f"⚠️ [VideoChat] AI说话超时({AI_SPEECH_MAX_DURATION}s)，强制释放锁")
+                self.ai_is_speaking = False
+                self.ai_speaking_done_at = now
+                self.ai_speaking_started_at = 0.0
+            else:
+                return
+
+        if self.ai_speaking_done_at > 0 and now - self.ai_speaking_done_at < AI_SPEECH_COOLDOWN_AFTER_DONE:
+            return
+
+        if now - self.last_user_response_request_at < MIN_RESPONSE_INTERVAL:
+            return
+
         has_speech = self._pcm_has_speech(audio_data)
 
         if has_speech:
+            if now - self.ai_speaking_done_at < AI_SPEECH_COOLDOWN_AFTER_DONE:
+                self.manual_turn_active = False
+                self.manual_turn_started_at = 0.0
+                self.manual_turn_last_voice_at = 0.0
+                return
             if not self.manual_turn_active:
                 self.manual_turn_active = True
                 self.manual_turn_started_at = now
@@ -615,7 +653,7 @@ class VideoInterviewSession:
             return
         if silence_duration < MANUAL_TURN_SILENCE_SECONDS:
             return
-        if now - self.last_user_response_request_at < 1.0:
+        if now - self.last_user_response_request_at < MIN_RESPONSE_INTERVAL:
             return
 
         try:
@@ -628,6 +666,8 @@ class VideoInterviewSession:
                 output_modalities=[MultiModality.AUDIO, MultiModality.TEXT]
             )
             self.last_user_response_request_at = now
+            self.ai_is_speaking = True
+            self.ai_speaking_started_at = now
         except Exception as e:
             logger.warning(f"⚠️ [VideoChat] 手动提交用户发言失败: {e}")
         finally:
@@ -760,6 +800,9 @@ class VideoInterviewSession:
         self.manual_turn_active = False
         self.manual_turn_started_at = 0.0
         self.manual_turn_last_voice_at = 0.0
+        self.ai_is_speaking = False
+        self.ai_speaking_done_at = 0.0
+        self.ai_speaking_started_at = 0.0
         if self.conversation:
             try:
                 self.conversation.stop()

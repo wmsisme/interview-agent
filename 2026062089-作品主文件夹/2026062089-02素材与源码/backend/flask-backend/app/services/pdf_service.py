@@ -256,7 +256,7 @@ class PDFService:
         
         # 面试信息表格
         info_data = [
-            ["面试岗位", data.get('position', '未指定')],
+            ["面试岗位", data.get('positionName', data.get('position', '未指定'))],
             ["面试ID", str(data.get('interviewId', 'N/A'))],
             ["开始时间", self._format_datetime(data.get('startTime'))],
             ["结束时间", self._format_datetime(data.get('endTime'))],

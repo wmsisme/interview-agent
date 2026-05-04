@@ -5,7 +5,7 @@ import { API_BASE_URL } from '@/config/runtime'
 
 const request: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 180000,
   headers: {
     'Content-Type': 'application/json'
   }

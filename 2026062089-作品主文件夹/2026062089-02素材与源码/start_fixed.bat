@@ -152,6 +152,18 @@ echo.
 echo [3/3] Starting services...
 echo.
 
+echo [INFO] Checking and cleaning port 8083 (Flask backend)...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8083" ^| findstr "LISTENING"') do (
+    echo   Found process PID %%p occupying port 8083
+    taskkill /PID %%p /F >nul 2>&1
+    if !errorlevel! EQU 0 (
+        echo   [OK] Process %%p terminated
+    ) else (
+        echo   [WARNING] Failed to terminate process %%p
+    )
+    timeout /t 1 /nobreak >nul
+)
+
 echo [3.1] Starting Flask Backend Service (Video Interview + RAG)...
 if not exist "%PROJECT_ROOT%backend\flask-backend\requirements.txt" (
     echo [ERROR] Flask backend not found at: %PROJECT_ROOT%backend\flask-backend\
@@ -168,11 +180,11 @@ if exist "%PROJECT_ROOT%backend\flask-backend\venv\Scripts\activate.bat" (
 
 if not "!VENV_PATH!"=="" (
     echo [INFO] Using Python virtual environment (!VENV_PATH!)
-    start "Flask Backend (Video Interview + RAG)" cmd /k "cd /d "%PROJECT_ROOT%backend\flask-backend" && call !VENV_PATH!\Scripts\activate.bat && python run.py"
+    start "" /D "%PROJECT_ROOT%backend\flask-backend" cmd /k "title Flask Backend (Video Interview + RAG) && call !VENV_PATH!\Scripts\activate.bat && python run.py"
 ) else (
     echo [WARNING] No virtual environment found, using system Python
     echo [NOTE] Virtual environment recommended for dependency isolation
-    start "Flask Backend (Video Interview + RAG)" cmd /k "cd /d "%PROJECT_ROOT%backend\flask-backend" && python run.py"
+    start "" /D "%PROJECT_ROOT%backend\flask-backend" cmd /k "title Flask Backend (Video Interview + RAG) && python run.py"
 )
 timeout /t 10 /nobreak >nul
 
@@ -232,7 +244,7 @@ if not exist "%PROJECT_ROOT%frontend\package.json" (
     pause
     exit /b 1
 )
-start "Frontend Service (Video Interview)" cmd /k "cd /d "%PROJECT_ROOT%frontend" && npm run dev"
+start "" /D "%PROJECT_ROOT%frontend" cmd /k "title Frontend Service (Video Interview) && npm run dev"
 timeout /t 5 /nobreak >nul
 
 echo.
@@ -241,7 +253,7 @@ echo All services started! Video Interview System Ready
 echo ========================================
 echo.
 echo URLs:
-echo   Frontend (Video Interview): https://localhost:5173
+echo   Frontend (Video Interview): http://localhost:5173
 echo   Flask Backend (API + WebSocket): http://localhost:8083
 echo   Video WebSocket: ws://localhost:8083/video_chat
 echo   RAG Service: Enabled (local mode, chroma_db ready)
@@ -258,7 +270,7 @@ echo [NOTE] System only supports video interview mode
 echo        No text or voice-only interview modes available
 echo.
 echo Opening frontend in browser...
-start "" https://localhost:5173
+start "" http://localhost:5173
 
 echo.
 echo Press any key to keep this window open...
