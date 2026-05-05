@@ -86,6 +86,11 @@ class LLMService:
         try:
             position_display = self._get_position_display_name(position)
 
+            relevance_check = self._check_answer_relevance(answer)
+            if not relevance_check["is_relevant"]:
+                logger.warning(f"检测到无效应答: reason={relevance_check['reason']}, answer_preview={answer[:50]!r}")
+                return self._get_irrelevant_answer_result(question, position, relevance_check["reason"])
+
             # 调用RAG获取参考答案
             rag_context = ""
             if RAG_ENABLED:
@@ -130,8 +135,13 @@ class LLMService:
     "endInterview": false
 }}
 
+【最高优先级 - 严禁编造】
+- 上述"参考答案"仅供你作为面试官内部分值参考，绝对禁止将参考答案中的任何内容归因于候选人。如果候选人实际回答中完全没有提到某概念（如Kafka、Flink等），你就绝对不能声称候选人"提到了"这些概念
+- 所有评分和feedback必须100%基于候选人的实际回答文字。如果候选人回答与问题完全无关、答非所问、或仅包含"好的""嗯""不错"等无实质内容，四项分数必须全部为0，feedback必须明确写"候选人未针对问题进行技术回答"或类似描述，不得编造任何技术评价
+- nextQuestion中禁止引用候选人未说过的任何技术概念。如果候选人未提到任何具体技术，下一个问题只能基于原问题进行引导式追问（如"你能先谈谈你对这个问题的初步想法吗？"），绝不能声称候选人已经表达了某个观点
+
 重要要求：
-- feedback必须针对这次回答的具体内容，明确指出回答中的优点和不足，给出改进方向，不要使用"回答得很好"等空泛评价
+- feedback必须针对这次回答的具体内容，明确指出回答中的优点和不足，给出改进方向，不要使用"回答得很好"等空泛评价。如果回答无实质内容，必须如实记录而非编造
 - nextQuestion应该是基于当前对话的自然追问，引导候选人深入思考或弥补不足，不要问与前一轮重复的问题
 - 【严禁自问自答】nextQuestion只能是纯问题，绝对不能包含问题的答案、解释或任何分析内容。不要替候选人回答问题
 - 如果已经进行了多轮（4轮以上）或候选人回答质量持续很差，可以设置endInterview为true"""
@@ -146,7 +156,8 @@ class LLMService:
 - 你只负责提问，候选人的任务是回答。绝对不要在自己的回复中回答自己提出的问题
 - nextQuestion必须是简洁的纯问题，不包含任何解释、分析或答案
 - 不要在问题中暗示答案或给出选项让候选人选择
-- 保持专业、公正的面试态度"""
+- 保持专业、公正的面试态度
+- 【严禁编造】你的评估必须100%依据候选人的实际回答文字。永远不要将参考答案、RAG检索结果或你自己的知识错误地归因到候选人身上。"候选人提到了XXX"这种表述只能在候选人确实说过XXX时使用。如果候选人的回答无实质内容，必须如实评分并指出，不得编造任何内容"""
 
             messages = [
                 {"role": "system", "content": system_prompt}
@@ -326,6 +337,41 @@ class LLMService:
             "matchScore": 7,
             "feedback": "系统未能对该回答进行详细评估，请参考综合报告中的整体分析。",
             "nextQuestion": self._get_default_question(position),
+            "endInterview": False
+        }
+
+    def _check_answer_relevance(self, answer: str) -> dict:
+        """检测回答是否包含有效技术内容，避免LLM对无效应答产生幻觉"""
+        if not answer or not answer.strip():
+            return {"is_relevant": False, "reason": "回答为空"}
+
+        stripped = answer.strip()
+
+        if len(stripped) <= 3:
+            return {"is_relevant": False, "reason": f"回答过短(仅{len(stripped)}字)"}
+
+        noise_patterns = [
+            "你好", "好的", "嗯", "哦", "啊", "哈哈", "不错", "挺好的",
+            "这个", "那个", "就是", "怎么说", "不太清楚", "不知道",
+            "还行", "可以", "没什么", "随便", "无所谓", "厉害",
+            "听不懂", "没听懂", "不会", "不懂",
+        ]
+
+        for noise in noise_patterns:
+            if stripped == noise or (len(stripped) <= 20 and noise in stripped and len(stripped.replace(noise, "").strip()) <= 2):
+                return {"is_relevant": False, "reason": f"回答疑似无意义({noise}): {stripped[:30]}"}
+
+        return {"is_relevant": True, "reason": ""}
+
+    def _get_irrelevant_answer_result(self, question: str, position: str, reason: str) -> dict:
+        """针对无效应答生成合理的评估结果和引导式追问"""
+        return {
+            "techScore": 0,
+            "depthScore": 0,
+            "logicScore": 0,
+            "matchScore": 0,
+            "feedback": f"候选人未针对问题进行技术回答（{reason}）。本轮无法评估技术能力。",
+            "nextQuestion": f"我刚才问的是关于{question[:30]}...的问题，你能尝试从技术的角度谈谈你的想法吗？",
             "endInterview": False
         }
     
