@@ -34,16 +34,26 @@ pip install -r requirements.txt
 
 ### 3. 配置API密钥
 
-编辑 `config.py` 文件，修改以下配置（如果需要）：
+从[阿里云百炼控制台](https://bailian.console.aliyun.com/)获取 API Key 后，设置为环境变量 `DASHSCOPE_API_KEY`：
+
+```bash
+# Windows PowerShell
+$env:DASHSCOPE_API_KEY="sk-你的百炼APIKey"
+
+# Linux / macOS
+export DASHSCOPE_API_KEY="sk-你的百炼APIKey"
+```
+
+`config.py` 会自动读取该环境变量：
 
 ```python
 # API配置
-API_KEY = "REMOVED_API_KEY"  # 您的DashScope API密钥
+API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")  # 从环境变量读取您的DashScope API密钥
 MODEL = "qwen3.5-omni-plus-realtime"             # 使用的模型
 VOICE = "Ethan"                                   # AI语音音色
 ```
 
-> **注意**：项目已配置了测试用的API密钥，可直接使用。如需更换为自己的密钥，请修改上述配置。
+> **注意**：请勿将真实 API 密钥写进代码或提交到仓库；密钥一旦泄露请立即到百炼控制台删除并重建。
 
 ### 4. 运行程序
 

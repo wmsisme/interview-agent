@@ -32,7 +32,8 @@ RAG_MODE = os.environ.get('RAG_MODE', 'local')  # 'local' 或 'http'
 
 # LLM配置 - 用于问题生成和评估（使用千问文本API）
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'tongyi')  # 使用千问文本API
-DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY', 'REMOVED_API_KEY')
+# 必须通过环境变量 DASHSCOPE_API_KEY 提供，切勿在此处写死密钥
+DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY', '')
 LLM_API_KEY = DASHSCOPE_API_KEY
 
 # 千问文本API配置（通义千问）

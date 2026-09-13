@@ -1,7 +1,12 @@
 import os
 from dashscope import Generation
 import dashscope
-#  api_key=os.getenv("DASHSCOPE_API_KEY"),这是环境变量中的API Key
+
+# 从环境变量读取百炼 API Key，不要把密钥写死在代码里
+api_key = os.getenv("DASHSCOPE_API_KEY")
+if not api_key:
+    raise SystemExit('未找到 DASHSCOPE_API_KEY，请先设置环境变量后再运行（PowerShell: $env:DASHSCOPE_API_KEY="sk-xxx"）')
+
 dashscope.base_http_api_url = 'https://dashscope.aliyuncs.com/api/v1'
 
 messages = [
@@ -9,8 +14,8 @@ messages = [
     {"role": "user", "content": "你好，我是张三。"},
 ]
 response = Generation.call(
-    # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key = "sk-xxx",
-    api_key="REMOVED_API_KEY",
+    # 从环境变量读取，切勿在此处写死密钥
+    api_key=api_key,
     model="deepseek-v4-flash",
     messages=messages,
     result_format="message",

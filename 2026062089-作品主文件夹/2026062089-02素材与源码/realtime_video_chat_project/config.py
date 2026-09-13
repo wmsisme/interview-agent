@@ -1,8 +1,8 @@
 # 千问实时多模态测试项目配置
 import os
 
-# API配置
-API_KEY = "REMOVED_API_KEY"
+# API配置：从环境变量 DASHSCOPE_API_KEY 读取，切勿在代码里写死密钥
+API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 MODEL = "qwen3.5-omni-plus-realtime"
 VOICE = "Ethan"  # 默认音色
 
