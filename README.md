@@ -39,7 +39,7 @@ README.md
 2026062089-作品主文件夹/
 ├── 2026062089-01作品与答辩材料/        # 概要介绍、详细方案（提交版）
 ├── 2026062089-02素材与源码/            # 可运行源码
-│   ├── backend/flask-backend/          # Flask 后端：app/{config,routes,services,utils}
+│   ├── backend/flask-backend/          # Flask 后端：app/{config,routes,services,models,utils}
 │   ├── frontend/                       # Vue 3 前端
 │   ├── realtime_video_chat_project/    # Qwen-Omni 实时视频对话独立验证工程
 │   ├── install.bat / start_fixed.bat / stop_fixed.bat / dev.ps1
