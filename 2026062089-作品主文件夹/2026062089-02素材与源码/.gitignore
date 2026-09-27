@@ -39,7 +39,7 @@ venv.bak/
 .env.development
 .env.production
 .env.test
-.env.example
+# .env.example 不再忽略：它已净化为占位模板并纳入版本管理（新克隆照它生成 .env）
 
 # Logs
 *.log
