@@ -345,8 +345,8 @@ class VideoInterviewSession:
         self.rag_integration = None
         if RAG_ENABLED:
             try:
-                from .rag_service import RagService
-                self.rag_service = RagService()
+                from .rag_service import RagService, get_rag_service
+                self.rag_service = get_rag_service()
                 logger.info(f"[VideoChat] RAG服务已初始化")
             except Exception as e:
                 logger.error(f"[VideoChat] 初始化RAG服务失败: {e}")

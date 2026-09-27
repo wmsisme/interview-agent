@@ -3,14 +3,14 @@ import time
 from datetime import datetime
 from ..models import db, InterviewRecord, QuestionAnswer
 from .llm_service import LLMService
-from .rag_service import RagService
+from .rag_service import RagService, get_rag_service
 
 logger = logging.getLogger(__name__)
 
 class InterviewService:
     def __init__(self):
         self.llm_service = LLMService()
-        self.rag_service = RagService()
+        self.rag_service = get_rag_service()
         self.conversation_history = {}  # {interview_id: [messages]}
     
     def start_interview(self, position, user_id=None):

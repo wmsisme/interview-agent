@@ -10,7 +10,7 @@ from ..services.video_chat_service import (
     VideoChatCallback, video_chat_service, VideoInterviewSession, VIDEO_CHAT_ENABLED
 )
 from ..services.interview_service import InterviewService
-from ..services.rag_service import RagService
+from ..services.rag_service import RagService, get_rag_service
 from ..config.default import RAG_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ interview_service = InterviewService()
 rag_service = None
 if RAG_ENABLED:
     try:
-        rag_service = RagService()
+        rag_service = get_rag_service()
         if rag_service.enabled:
             logger.info("RAG服务已初始化")
         else:

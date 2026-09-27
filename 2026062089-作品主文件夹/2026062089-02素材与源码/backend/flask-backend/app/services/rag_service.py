@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import requests
 from typing import List, Dict, Any
 from ..config.default import RAG_SERVICE_URL, RAG_ENABLED, RAG_MODE, CHROMA_DB_PATH, EMBEDDING_MODEL_PATH, RAG_TOP_K
@@ -338,3 +339,24 @@ class RagService:
         except Exception as e:
             logger.error(f"本地RAG健康检查失败: {str(e)}")
             return False
+
+# ---------------------------------------------------------------------------
+# 全局单例
+# ---------------------------------------------------------------------------
+_rag_service_instance = None
+_rag_service_lock = threading.Lock()
+
+
+def get_rag_service() -> 'RagService':
+    """返回全局唯一的 RagService 实例。
+
+    RagService 构造一次要加载 1.2GB 的 BGE 嵌入模型（约 20-30 秒），而
+    interview_service / llm_service / rag 路由 / websocket_video / 每个视频会话
+    过去都各自构造一份，启动时重复加载 5 次。统一从这里取同一个实例。
+    """
+    global _rag_service_instance
+    if _rag_service_instance is None:
+        with _rag_service_lock:
+            if _rag_service_instance is None:
+                _rag_service_instance = RagService()
+    return _rag_service_instance

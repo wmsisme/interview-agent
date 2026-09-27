@@ -21,8 +21,8 @@ class LLMService:
         # 如果RAG启用，初始化RAG服务
         if RAG_ENABLED:
             try:
-                from .rag_service import RagService
-                self.rag_service = RagService()
+                from .rag_service import RagService, get_rag_service
+                self.rag_service = get_rag_service()
                 if self.rag_service.enabled:
                     logger.info(f"LLM服务已初始化RAG服务，模式: {self.rag_service.mode}")
                 else:

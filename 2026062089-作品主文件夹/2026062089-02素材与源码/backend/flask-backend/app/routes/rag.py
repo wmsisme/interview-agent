@@ -1,7 +1,7 @@
 import logging
 from flask import Blueprint, request
 from ..utils.response import success, error, bad_request
-from ..services.rag_service import RagService
+from ..services.rag_service import RagService, get_rag_service
 from ..config.default import RAG_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,7 @@ rag_service = None
 
 if RAG_ENABLED:
     try:
-        rag_service = RagService()
+        rag_service = get_rag_service()
         if rag_service.enabled:
             logger.info("RAG路由已初始化")
         else:
