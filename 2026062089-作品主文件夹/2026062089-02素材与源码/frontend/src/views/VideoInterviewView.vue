@@ -1,134 +1,104 @@
 <template>
   <div class="video-interview-view">
     <div class="header">
-      <el-page-header @back="goBack">
-        <template #content>
-          <div class="header-content">
+      <div class="header-inner">
+        <div class="header-left">
+          <el-button text @click="goBack" class="back-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </el-button>
+          <div class="header-title-group">
             <span class="position">{{ positionName }}</span>
-            <el-tag v-if="currentRound" type="primary">第{{ currentRound }}轮</el-tag>
-            <el-tag v-if="videoConnected" type="success" class="video-status-tag">
-              <el-icon><Connection /></el-icon>
-              视频面试已连接
-            </el-tag>
-            <el-tag v-else type="warning" class="video-status-tag">
-              <el-icon><Close /></el-icon>
-              视频面试未连接
-            </el-tag>
+            <div class="header-tags">
+              <el-tag v-if="currentRound" type="primary" size="small" round>第{{ currentRound }}轮</el-tag>
+              <div v-if="videoConnected" class="status-badge connected">
+                <span class="status-dot"></span>
+                视频面试已连接
+              </div>
+              <div v-else class="status-badge disconnected">
+                <span class="status-dot"></span>
+                视频面试未连接
+              </div>
+            </div>
           </div>
-        </template>
-        <template #extra>
-          <el-button v-if="!finished" type="danger" @click="endInterview" :loading="loading">
+        </div>
+        <div class="header-right">
+          <el-button v-if="!finished" type="danger" plain round @click="endInterview" :loading="loading">
             结束面试
           </el-button>
-          <el-button v-else type="primary" @click="goToReport">
+          <el-button v-else type="primary" round @click="goToReport">
             查看报告
           </el-button>
-        </template>
-      </el-page-header>
+        </div>
+      </div>
     </div>
 
     <div class="video-interview-container">
-      <!-- 视频区域 -->
       <div class="video-area">
         <div class="video-preview">
           <div class="section-head">
             <div>
-              <div class="section-eyebrow">Live Preview</div>
-              <h3>您的摄像头预览</h3>
+              <div class="section-eyebrow">摄像头预览</div>
+              <h3>您的画面</h3>
             </div>
             <div class="section-actions">
-              <el-button
-                plain
-                size="small"
-                @click="showDebugPanel = !showDebugPanel"
-              >
+              <el-button plain size="small" round @click="showDebugPanel = !showDebugPanel">
                 {{ showDebugPanel ? '收起控制面板' : '展开控制面板' }}
               </el-button>
             </div>
           </div>
           <div v-if="mediaWarningText" class="media-warning">
-            <el-alert
-              :title="mediaWarningText"
-              type="warning"
-              :closable="false"
-              show-icon
-            />
+            <el-alert :title="mediaWarningText" type="warning" :closable="false" show-icon />
           </div>
           <div v-if="!cameraActive" class="permission-actions">
-            <el-button type="primary" plain @click="requestPermissionsAndRefresh" :loading="cameraLoading">
+            <el-button type="primary" plain round @click="requestPermissionsAndRefresh" :loading="cameraLoading">
               重新检测设备
             </el-button>
-            <span class="permission-hint">页面会自动请求权限；如果列表没刷新，再点这里重试</span>
+            <span class="permission-hint">页面会自动请求权限，如列表未刷新可点击重试</span>
           </div>
-          <video ref="localVideo" autoplay muted playsinline class="local-video"></video>
-          
-          <!-- 设备选择 -->
+          <div class="video-wrapper">
+            <video ref="localVideo" autoplay muted playsinline class="local-video"></video>
+            <div v-if="!cameraActive" class="video-placeholder">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              <span>摄像头未开启</span>
+            </div>
+          </div>
+
           <div v-if="!cameraActive" class="device-selection">
             <div class="device-selector">
-              <span class="device-label">摄像头:</span>
+              <span class="device-label">摄像头</span>
               <div v-if="videoDevices.length > 0" class="device-dropdown">
-                <el-select 
-                  v-model="selectedVideoDeviceId" 
-                  placeholder="选择摄像头"
-                  size="small"
-                  style="width: 200px"
-                >
-                  <el-option
-                    v-for="device in videoDevices"
-                    :key="device.deviceId"
-                    :label="device.displayLabel"
-                    :value="device.deviceId"
-                  />
+                <el-select v-model="selectedVideoDeviceId" placeholder="选择摄像头" size="small" style="width: 200px">
+                  <el-option v-for="device in videoDevices" :key="device.deviceId" :label="device.displayLabel" :value="device.deviceId" />
                 </el-select>
               </div>
               <div v-else class="device-empty">
-                <span class="empty-text">未检测到摄像头设备</span>
-                <el-button link size="small" @click="requestPermissionsAndRefresh">检测并刷新</el-button>
+                <span class="empty-text">未检测到摄像头</span>
+                <el-button link size="small" @click="requestPermissionsAndRefresh">检测刷新</el-button>
               </div>
             </div>
             <div class="device-selector">
-              <span class="device-label">麦克风:</span>
+              <span class="device-label">麦克风</span>
               <div v-if="audioDevices.length > 0" class="device-dropdown">
-                <el-select 
-                  v-model="selectedAudioDeviceId" 
-                  placeholder="选择麦克风"
-                  size="small"
-                  style="width: 200px"
-                >
-                  <el-option
-                  v-for="device in audioDevices"
-                  :key="device.deviceId"
-                  :label="device.displayLabel"
-                  :value="device.deviceId"
-                />
+                <el-select v-model="selectedAudioDeviceId" placeholder="选择麦克风" size="small" style="width: 200px">
+                  <el-option v-for="device in audioDevices" :key="device.deviceId" :label="device.displayLabel" :value="device.deviceId" />
                 </el-select>
               </div>
               <div v-else class="device-empty">
-                <span class="empty-text">未检测到麦克风设备</span>
-                <el-button link size="small" @click="requestPermissionsAndRefresh">检测并刷新</el-button>
+                <span class="empty-text">未检测到麦克风</span>
+                <el-button link size="small" @click="requestPermissionsAndRefresh">检测刷新</el-button>
               </div>
             </div>
           </div>
-          
+
           <div class="video-controls">
-            <el-button 
-              v-if="!cameraActive" 
-              type="primary" 
-              @click="startCamera"
-              :loading="cameraLoading"
-            >
-              <el-icon><VideoCamera /></el-icon>
+            <el-button v-if="!cameraActive" type="primary" round @click="startCamera" :loading="cameraLoading" class="control-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
               开启摄像头
             </el-button>
-            <el-button 
-              v-else 
-              type="warning" 
-              @click="stopCamera"
-            >
-              <el-icon><VideoCameraFilled /></el-icon>
+            <el-button v-else type="warning" round @click="stopCamera" class="control-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
               关闭摄像头
             </el-button>
-
           </div>
 
           <div v-if="showDebugPanel" class="debug-panel">
@@ -160,75 +130,73 @@
         <div class="video-status">
           <div class="section-head">
             <div>
-              <div class="section-eyebrow">Interview Status</div>
-              <h3>面试状态</h3>
+              <div class="section-eyebrow">面试状态</div>
+              <h3>实时监控</h3>
             </div>
           </div>
           <div class="status-indicators">
-            <div class="status-item">
-              <el-icon :color="cameraActive ? '#67c23a' : '#909399'"><VideoCamera /></el-icon>
+            <div class="status-item" :class="{ active: cameraActive }">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
               <span>摄像头 {{ cameraActive ? '已开启' : '已关闭' }}</span>
             </div>
-            <div class="status-item">
-              <el-icon :color="microphoneActive ? '#67c23a' : '#909399'"><Microphone /></el-icon>
+            <div class="status-item" :class="{ active: microphoneActive }">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               <span>麦克风 {{ microphoneActive ? '已开启' : '已关闭' }}</span>
             </div>
-            <div class="status-item">
-              <el-icon :color="videoConnected ? '#67c23a' : '#909399'"><Connection /></el-icon>
-              <span>视频连接 {{ videoConnected ? '已建立' : '未连接' }}</span>
+            <div class="status-item" :class="{ active: videoConnected }">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span>连接 {{ videoConnected ? '已建立' : '未连接' }}</span>
             </div>
-            <div class="status-item">
-              <el-icon :color="isPlayingAudio ? '#e6a23c' : '#909399'"><VideoPlay /></el-icon>
+            <div class="status-item" :class="{ active: isPlayingAudio }">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
               <span>AI语音 {{ isPlayingAudio ? '播放中' : '静音' }}</span>
             </div>
           </div>
 
-          <!-- 字幕显示 -->
           <div v-if="currentSubtitle" class="subtitle-display">
-            <h4>面试官发言</h4>
+            <div class="subtitle-label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+              面试官正在发言
+            </div>
             <div class="subtitle-text">{{ currentSubtitle }}</div>
           </div>
         </div>
       </div>
 
-      <!-- 对话历史区域 -->
       <div class="chat-history">
         <div class="section-head">
           <div>
-            <div class="section-eyebrow">Conversation</div>
+            <div class="section-eyebrow">对话记录</div>
             <h3>对话历史</h3>
           </div>
-          <el-tag type="info" effect="plain">{{ messages.length }} 条消息</el-tag>
+          <el-tag type="info" effect="plain" size="small" round>{{ messages.length }} 条消息</el-tag>
         </div>
         <div class="messages-container">
-          <div v-for="(message, index) in messages" :key="index" class="message-item">
-            <div class="message-sender">{{ message.role === 'ai' ? '面试官' : '您' }}</div>
+          <div v-for="(message, index) in messages" :key="index" class="message-item" :class="message.role === 'ai' ? 'ai-msg' : 'user-msg'">
+            <div class="message-sender">{{ message.role === 'ai' ? '🤖 面试官' : '👤 您' }}</div>
             <div class="message-content">{{ message.content }}</div>
             <div class="message-time">{{ formatTime(message.timestamp) }}</div>
           </div>
           <div v-if="messages.length === 0" class="empty-messages">
-            <el-empty description="对话尚未开始，请开启摄像头和麦克风后开始面试" />
+            <el-empty description="对话尚未开始，请先开启摄像头与麦克风" />
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 开始面试按钮 -->
     <div v-if="!interviewStarted" class="start-interview-section">
-      <el-button 
-        type="success" 
-        size="large" 
-        @click="startVideoInterview"
-        :disabled="!cameraActive || !microphoneActive || loading"
-        :loading="loading"
-      >
-        <el-icon><VideoPlay /></el-icon>
-        开始视频面试
-      </el-button>
-      <p class="start-hint">请确保摄像头和麦克风已开启，然后点击开始面试</p>
+      <div class="start-card">
+        <div class="start-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+        <h3>准备开始面试</h3>
+        <p>请确保摄像头和麦克风已开启</p>
+        <el-button type="primary" size="large" round @click="startVideoInterview" :disabled="!cameraActive || !microphoneActive || loading" :loading="loading" class="start-interview-btn">
+          开始视频面试
+        </el-button>
+      </div>
     </div>
 
-    <!-- 音频播放器（隐藏） -->
     <audio ref="audioPlayer" @ended="onAudioEnded"></audio>
   </div>
 </template>
@@ -1056,12 +1024,13 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
     
     videoSocket = io(SOCKET_HTTP_BASE_URL + '/ws/video', {
       path: '/socket.io',
-      transports: ['websocket', 'polling'],
+      transports: ['polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 30000
+      reconnectionAttempts: 10,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+      timeout: 30000,
+      upgrade: false
     })
     
     let connected = false
@@ -1073,7 +1042,7 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
         console.warn('Socket.IO连接超时')
         reject(new Error('连接超时'))
       }
-    }, 10000) // 10秒超时
+    }, 20000)
     
     videoSocket.on('connect', () => {
       console.log('视频WebSocket连接已建立')
@@ -1133,9 +1102,12 @@ const connectVideoSocket = (interviewId: string): Promise<void> => {
       handleSocketMessage({ type: 'error', message: data.message })
     })
     
-    videoSocket.on('connect_error', (error: Error) => {
-      console.error('Socket.IO连接错误:', error)
-      reject(error)
+    videoSocket.on('connect_error', (error: Error & { description?: any; context?: any; type?: string }) => {
+      console.warn('Socket.IO connect_error:', error.message || error)
+      if (error.description) console.warn('  描述:', error.description)
+      if (error.context) console.warn('  上下文:', error.context)
+      if (error.type) console.warn('  类型:', error.type)
+      console.warn('  连接目标:', SOCKET_HTTP_BASE_URL + '/ws/video')
     })
     
     videoSocket.on('disconnect', (reason: string) => {
@@ -1477,35 +1449,114 @@ const cleanup = () => {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.2), transparent 32%),
-    linear-gradient(135deg, #153677 0%, #1f6feb 52%, #8fd3ff 100%);
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.15), transparent 32%),
+    linear-gradient(155deg, #0c1e3d 0%, #153677 35%, #1a5fa8 70%, #2980b9 100%);
 }
 
 .header {
-  background: rgba(255, 255, 255, 0.96);
-  padding: 16px 24px;
-  box-shadow: 0 10px 30px rgba(10, 31, 68, 0.12);
-  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 24px rgba(10, 31, 68, 0.1);
 }
 
-.header-content {
+.header-inner {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 12px 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
   gap: 12px;
 }
 
+.back-btn {
+  color: #475569;
+  font-size: 1.25rem;
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+}
+
+.back-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .position {
-  font-size: 20px;
+  font-size: 1.15rem;
   font-weight: 700;
-  color: #16325c;
+  color: #0f172a;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.status-badge.connected {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.06));
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-badge.disconnected {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-badge.connected .status-dot {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.status-badge.disconnected .status-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .video-interview-container {
   flex: 1;
   display: flex;
-  padding: 24px;
-  gap: 24px;
+  padding: 20px;
+  gap: 20px;
   overflow: hidden;
 }
 
@@ -1513,15 +1564,17 @@ const cleanup = () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
+  min-width: 0;
 }
 
 .video-preview {
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-2xl);
   padding: 24px;
-  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  box-shadow: 0 16px 48px rgba(10, 31, 68, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
 }
 
 .section-head {
@@ -1529,7 +1582,7 @@ const cleanup = () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .section-actions {
@@ -1539,19 +1592,21 @@ const cleanup = () => {
 }
 
 .section-eyebrow {
-  margin-bottom: 4px;
-  font-size: 12px;
+  margin-bottom: 2px;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6b89b6;
+  color: var(--text-tertiary);
 }
 
 .video-preview h3,
 .video-status h3,
 .chat-history h3 {
   margin: 0;
-  color: #183153;
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .media-warning {
@@ -1562,31 +1617,54 @@ const cleanup = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
 }
 
 .permission-hint {
-  color: #606266;
-  font-size: 13px;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  margin-bottom: 14px;
 }
 
 .local-video {
   width: 100%;
-  aspect-ratio: 16/9;
-  border-radius: 16px;
-  background: #000;
-  margin-bottom: 16px;
+  height: 100%;
+  border-radius: var(--radius-xl);
+  background: #0f172a;
   object-fit: contain;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  background: #1e293b;
+  border-radius: var(--radius-xl);
+  font-size: 0.9rem;
 }
 
 .video-controls {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.control-btn {
+  font-weight: 600;
 }
 
 .audio-hint {
@@ -1603,11 +1681,11 @@ const cleanup = () => {
 }
 
 .debug-panel {
-  margin-top: 16px;
+  margin-top: 14px;
   padding: 14px;
   background: linear-gradient(180deg, #0f172a, #16233d);
   color: #e5e7eb;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   font-size: 12px;
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
@@ -1615,6 +1693,7 @@ const cleanup = () => {
 .debug-header {
   font-weight: 700;
   margin-bottom: 8px;
+  color: #93c5fd;
 }
 
 .debug-grid {
@@ -1650,10 +1729,10 @@ const cleanup = () => {
 }
 
 .device-selection {
-  margin-bottom: 20px;
-  padding: 16px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
   background: linear-gradient(180deg, #f8fbff, #f1f7ff);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px solid #dbeafe;
 }
 
@@ -1661,7 +1740,7 @@ const cleanup = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .device-selector:last-child {
@@ -1669,9 +1748,10 @@ const cleanup = () => {
 }
 
 .device-label {
-  min-width: 80px;
-  font-weight: 500;
-  color: #495057;
+  min-width: 72px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
 .device-dropdown {
@@ -1683,19 +1763,19 @@ const cleanup = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: #f8f9fa;
   border: 1px solid #e9ecef;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: #6c757d;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .empty-text {
   color: #6c757d;
+  font-size: 0.85rem;
 }
 
-/* 虚拟摄像头选项样式 */
 :deep(.virtual-camera-option) .el-select-dropdown__item {
   color: #f56c6c !important;
   font-style: italic;
@@ -1706,60 +1786,81 @@ const cleanup = () => {
 }
 
 .video-status {
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-2xl);
   padding: 24px;
-  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  box-shadow: 0 16px 48px rgba(10, 31, 68, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
 }
 
 .status-indicators {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .status-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 56px;
-  padding: 14px 16px;
+  gap: 10px;
+  min-height: 52px;
+  padding: 12px 14px;
   background: linear-gradient(180deg, #f8fbff, #eef5ff);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px solid #dbeafe;
-  color: #183153;
+  color: var(--text-tertiary);
   font-weight: 500;
+  font-size: 0.85rem;
+  transition: all var(--transition-base);
+}
+
+.status-item.active {
+  color: #059669;
+  background: linear-gradient(180deg, #ecfdf5, #d1fae5);
+  border-color: #a7f3d0;
+}
+
+.status-item.active svg {
+  color: #10b981;
 }
 
 .subtitle-display {
-  background: linear-gradient(180deg, #edf7ff, #f7fbff);
-  border: 1px solid #a8d1ff;
-  border-radius: 16px;
+  background: linear-gradient(135deg, #f0f7ff, #f8fbff);
+  border: 1px solid #bae6fd;
+  border-radius: var(--radius-xl);
   padding: 16px;
   margin-top: 16px;
+  animation: fadeInUp 0.4s ease;
 }
 
-.subtitle-display h4 {
+.subtitle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 8px;
-  color: #409eff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-color);
 }
 
 .subtitle-text {
-  font-size: 16px;
-  line-height: 1.5;
-  color: #333;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-primary);
   min-height: 24px;
 }
 
 .chat-history {
-  width: 420px;
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 20px;
+  width: 400px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-2xl);
   padding: 24px;
-  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  box-shadow: 0 16px 48px rgba(10, 31, 68, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
 }
@@ -1767,32 +1868,50 @@ const cleanup = () => {
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  padding-right: 8px;
+  padding-right: 4px;
   min-height: 240px;
 }
 
 .message-item {
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  background: linear-gradient(180deg, #f8fbff, #f2f7ff);
-  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-lg);
   border: 1px solid #dbeafe;
+  transition: all var(--transition-fast);
+}
+
+.message-item.ai-msg {
+  background: linear-gradient(180deg, #f8fbff, #f2f7ff);
+}
+
+.message-item.user-msg {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(59, 130, 246, 0.03));
+  border-color: rgba(59, 130, 246, 0.15);
 }
 
 .message-sender {
-  font-weight: bold;
-  color: #409eff;
+  font-weight: 700;
+  font-size: 0.8rem;
   margin-bottom: 4px;
 }
 
+.ai-msg .message-sender {
+  color: var(--primary-color);
+}
+
+.user-msg .message-sender {
+  color: var(--text-primary);
+}
+
 .message-content {
-  color: #333;
-  line-height: 1.5;
+  color: var(--text-primary);
+  line-height: 1.55;
+  font-size: 0.9rem;
 }
 
 .message-time {
-  font-size: 12px;
-  color: #999;
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
   margin-top: 4px;
   text-align: right;
 }
@@ -1809,17 +1928,60 @@ const cleanup = () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  background: rgba(255, 255, 255, 0.96);
-  margin: 24px;
-  border-radius: 20px;
-  box-shadow: 0 24px 60px rgba(10, 31, 68, 0.16);
+  padding: 24px;
+  background: none;
+  margin: 20px;
+}
+
+.start-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-2xl);
+  padding: 40px 48px;
+  box-shadow: 0 16px 48px rgba(10, 31, 68, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.start-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(139, 92, 246, 0.12));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+  margin-bottom: 8px;
+}
+
+.start-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.start-card p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.start-interview-btn {
+  margin-top: 8px;
+  padding: 12px 32px;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .start-hint {
   margin-top: 16px;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -1836,21 +1998,29 @@ const cleanup = () => {
 }
 
 @media (max-width: 768px) {
-  .header {
-    padding: 14px 16px;
+  .header-inner {
+    padding: 10px 14px;
+  }
+
+  .header-title-group {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .position {
+    font-size: 1rem;
   }
 
   .video-interview-container {
-    padding: 16px;
-    gap: 16px;
+    padding: 12px;
+    gap: 12px;
   }
 
   .video-preview,
   .video-status,
-  .chat-history,
-  .start-interview-section {
-    padding: 18px;
-    border-radius: 16px;
+  .chat-history {
+    padding: 16px;
+    border-radius: var(--radius-xl);
   }
 
   .status-indicators {
@@ -1874,7 +2044,11 @@ const cleanup = () => {
 
   .local-video {
     aspect-ratio: 16/9;
-    max-height: 300px;
+    max-height: 280px;
+  }
+
+  .start-card {
+    padding: 28px 20px;
   }
 }
 </style>

@@ -179,31 +179,50 @@ if exist "%PROJECT_ROOT%backend\flask-backend\venv\Scripts\activate.bat" (
 )
 
 if not "!VENV_PATH!"=="" (
-    echo [INFO] Using Python virtual environment (!VENV_PATH!)
-    start "" /D "%PROJECT_ROOT%backend\flask-backend" cmd /k "title Flask Backend (Video Interview + RAG) && call !VENV_PATH!\Scripts\activate.bat && python run.py"
+    echo [INFO] Using Python virtual environment ^(!VENV_PATH!^)
+    set "PYTHON_EXE=%PROJECT_ROOT%backend\flask-backend\!VENV_PATH!\Scripts\python.exe"
 ) else (
     echo [WARNING] No virtual environment found, using system Python
     echo [NOTE] Virtual environment recommended for dependency isolation
-    start "" /D "%PROJECT_ROOT%backend\flask-backend" cmd /k "title Flask Backend (Video Interview + RAG) && python run.py"
+    set PYTHON_EXE=python
 )
-timeout /t 10 /nobreak >nul
 
-echo Verifying Flask backend startup...
+echo [INFO] Starting Flask backend with: !PYTHON_EXE!
+echo [INFO] Backend will load AI models (sentence-transformers), please wait 30-45 seconds...
+echo.
+start "Flask Backend (Video Interview + RAG)" /D "%PROJECT_ROOT%backend\flask-backend" !PYTHON_EXE! run.py
+
+echo Waiting for backend to initialize (loading AI models)...
 set VERIFY_ATTEMPTS=0
+set VERIFY_MAX_ATTEMPTS=8
 :verify_backend
 set /a VERIFY_ATTEMPTS+=1
-echo Attempt !VERIFY_ATTEMPTS!/3: Checking backend health...
-powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:8083/api/health' -TimeoutSec 3 -UseBasicParsing; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+if !VERIFY_ATTEMPTS! GEQ 2 (
+    echo   Checking ^(!VERIFY_ATTEMPTS!/!VERIFY_MAX_ATTEMPTS!^) - models may still be loading...
+)
+powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:8083/api/health' -TimeoutSec 5 -UseBasicParsing; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
 if not errorlevel 1 (
     echo [OK] Flask backend is running and healthy
     goto backend_verified
 )
-if !VERIFY_ATTEMPTS! GEQ 3 (
-    echo [WARNING] Flask backend may not have started properly
-    echo Continuing anyway, but the backend may not be available
+if !VERIFY_ATTEMPTS! GEQ !VERIFY_MAX_ATTEMPTS! (
+    echo.
+    echo ========================================
+    echo [WARNING] Backend health check timed out
+    echo ========================================
+    echo This may be because:
+    echo   1. AI models ^(sentence-transformers^) are still loading - wait 10 more seconds then refresh
+    echo   2. Python environment is missing dependencies - check the backend terminal window
+    echo   3. Port 8083 is occupied by another process
+    echo.
+    echo The backend terminal window should still be open - check it for error messages.
+    echo If the window closed immediately, there may be a Python/dependency issue.
+    echo.
+    echo Press any key to continue ^(backend may still be loading in background^)...
+    pause >nul
     goto backend_failed
 )
-timeout /t 3 /nobreak >nul
+timeout /t 5 /nobreak >nul
 goto verify_backend
 :backend_verified
 :backend_failed

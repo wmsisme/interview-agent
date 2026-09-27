@@ -4,7 +4,7 @@ from flask_socketio import SocketIO
 import os
 
 # 创建SocketIO实例
-socketio = SocketIO()
+socketio = SocketIO(async_mode='eventlet')
 
 def create_app():
     app = Flask(__name__)

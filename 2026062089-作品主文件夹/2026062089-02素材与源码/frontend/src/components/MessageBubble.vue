@@ -141,15 +141,16 @@ const playAudio = async () => {
 <style scoped>
 .message-bubble {
   margin-bottom: 1.5rem;
-  border-radius: var(--radius-lg);
-  padding: 1rem;
+  border-radius: var(--radius-xl);
+  padding: 1.125rem;
   max-width: 80%;
   position: relative;
-  transition: all 0.2s ease;
+  transition: all var(--transition-base);
+  animation: fadeInUp 0.4s ease both;
 }
 
 .message-bubble:hover {
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .ai-message {
@@ -164,6 +165,7 @@ const playAudio = async () => {
   color: white;
   align-self: flex-end;
   margin-left: auto;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.2);
 }
 
 .has-scores {
@@ -184,10 +186,11 @@ const playAudio = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .avatar-ai {
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  background: linear-gradient(135deg, var(--accent-color), var(--accent-dark));
   color: white;
   width: 100%;
   height: 100%;
@@ -195,10 +198,11 @@ const playAudio = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
 }
 
 .avatar-user {
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+  background: linear-gradient(135deg, var(--secondary-color), var(--secondary-dark));
   color: white;
   width: 100%;
   height: 100%;
@@ -206,6 +210,7 @@ const playAudio = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
 }
 
 .message-meta {
@@ -214,21 +219,21 @@ const playAudio = async () => {
 }
 
 .sender {
-  font-weight: 600;
-  font-size: 0.875rem;
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
 .user-message .sender {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .timestamp {
-  font-size: 0.75rem;
-  opacity: 0.7;
+  font-size: 0.7rem;
+  opacity: 0.6;
 }
 
 .user-message .timestamp {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .message-content {
@@ -239,6 +244,11 @@ const playAudio = async () => {
   white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 1rem;
+  font-size: 0.925rem;
+}
+
+.ai-message .content-text {
+  color: var(--text-primary);
 }
 
 .user-message .content-text {
@@ -262,9 +272,9 @@ const playAudio = async () => {
 }
 
 .score-title {
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 0.75rem;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
 }
 
 .user-message .score-title {
@@ -279,24 +289,25 @@ const playAudio = async () => {
 
 .score-item {
   display: grid;
-  grid-template-columns: 60px 1fr 60px;
+  grid-template-columns: 55px 1fr 55px;
   align-items: center;
   gap: 0.75rem;
 }
 
 .score-label {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
   text-align: right;
+  font-weight: 500;
 }
 
 .user-message .score-label {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .score-value {
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   color: var(--text-primary);
   text-align: center;
 }
@@ -307,6 +318,7 @@ const playAudio = async () => {
 
 :deep(.el-progress-bar__outer) {
   background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
 }
 
 .user-message :deep(.el-progress-bar__outer) {
@@ -317,9 +329,9 @@ const playAudio = async () => {
   .message-bubble {
     max-width: 90%;
   }
-  
+
   .score-item {
-    grid-template-columns: 50px 1fr 50px;
+    grid-template-columns: 45px 1fr 45px;
     gap: 0.5rem;
   }
 }

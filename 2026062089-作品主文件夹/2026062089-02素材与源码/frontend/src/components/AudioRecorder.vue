@@ -475,25 +475,28 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   gap: 1rem;
-  padding: 1.5rem;
-  background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  padding: 2rem;
+  background: var(--surface-color);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
 }
 
 .recorder-button-container {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .recorder-button {
-  width: 80px;
-  height: 80px;
-  font-size: 1.5rem;
-  transition: all 0.3s ease;
+  width: 88px;
+  height: 88px;
+  font-size: 1.75rem;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-md);
 }
 
 .recorder-button:hover:not(.disabled) {
-  transform: scale(1.05);
+  transform: scale(1.06);
+  box-shadow: var(--shadow-lg);
 }
 
 .recorder-button.recording {
@@ -501,12 +504,12 @@ defineExpose({
 }
 
 .recorder-button.disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .pulse-animation {
-  animation: pulse-icon 0.5s infinite alternate;
+  animation: pulse-icon 0.6s infinite alternate;
 }
 
 .recorder-status {
@@ -526,7 +529,7 @@ defineExpose({
   align-items: center;
   gap: 0.5rem;
   color: var(--danger-color);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .pulse-dot {
@@ -538,7 +541,7 @@ defineExpose({
 }
 
 .recording-text {
-  font-size: 0.875rem;
+  font-size: 0.9rem;
 }
 
 .recording-time {
@@ -546,7 +549,8 @@ defineExpose({
   align-items: center;
   gap: 0.25rem;
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .idle-status {
@@ -562,15 +566,16 @@ defineExpose({
 
 .hint-text {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
 .waveform-container {
   width: 100%;
-  height: 60px;
+  height: 56px;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  border: 1px solid var(--border-light);
 }
 
 .waveform-canvas {
@@ -580,20 +585,21 @@ defineExpose({
 
 .partial-text {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.875rem;
   background: var(--background-color);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
 }
 
 .partial-text-label {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   margin-bottom: 0.25rem;
+  font-weight: 500;
 }
 
 .partial-text-content {
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   color: var(--text-primary);
   line-height: 1.4;
   min-height: 1.2em;
@@ -606,16 +612,60 @@ defineExpose({
   justify-content: center;
 }
 
+.control-buttons .el-button {
+  font-weight: 500;
+}
+
 .audio-player {
   display: none;
 }
 
+.text-edit-area {
+  width: 100%;
+  padding: 1rem;
+  background: var(--background-alt);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+}
+
+.edit-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.text-edit-input {
+  margin-bottom: 1rem;
+}
+
+.text-edit-input :deep(.el-textarea__inner) {
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 80px;
+  border-radius: var(--radius-md);
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.edit-buttons .el-button {
+  min-width: 80px;
+  font-weight: 500;
+}
+
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+    box-shadow: 0 0 0 14px rgba(239, 68, 68, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
@@ -632,57 +682,23 @@ defineExpose({
 }
 
 @media (max-width: 640px) {
-  .recorder-button {
-    width: 70px;
-    height: 70px;
+  .recorder-container {
+    padding: 1.5rem;
   }
-  
+
+  .recorder-button {
+    width: 72px;
+    height: 72px;
+    font-size: 1.5rem;
+  }
+
   .control-buttons {
     flex-direction: column;
     width: 100%;
   }
-  
+
   .control-buttons .el-button {
     width: 100%;
   }
-}
-
-/* 文本编辑区域样式 */
-.text-edit-area {
-  width: 100%;
-  padding: 1rem;
-  background: var(--background-color);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
-}
-
-.edit-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-}
-
-.text-edit-input {
-  margin-bottom: 1rem;
-}
-
-.text-edit-input :deep(.el-textarea__inner) {
-  font-family: inherit;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  resize: vertical;
-  min-height: 80px;
-}
-
-.edit-buttons {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
-.edit-buttons .el-button {
-  min-width: 80px;
 }
 </style>

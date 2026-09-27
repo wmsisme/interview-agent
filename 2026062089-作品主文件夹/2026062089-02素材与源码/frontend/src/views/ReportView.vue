@@ -389,14 +389,17 @@ watch(() => route.params.id, (newId, oldId) => {
 
 <style scoped>
 .report-view {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--background-color);
 }
 
 .header {
-  padding: 1rem;
-  background: white;
+  padding: 1rem 1.5rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
 }
@@ -409,32 +412,39 @@ watch(() => route.params.id, (newId, oldId) => {
 
 .title {
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .report-container {
   flex: 1;
   overflow-y: auto;
-  padding: 1rem;
-  max-width: 1200px;
+  padding: 2rem 1.5rem;
+  max-width: 1000px;
   margin: 0 auto;
   width: 100%;
 }
 
 .report-summary {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .summary-card {
-  border: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--transition-base);
+}
+
+.summary-card:hover {
   box-shadow: var(--shadow-lg);
 }
 
 .summary-content {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  padding: 1rem;
+  gap: 2.5rem;
+  padding: 1.5rem;
 }
 
 .overall-score {
@@ -442,27 +452,29 @@ watch(() => route.params.id, (newId, oldId) => {
 }
 
 .score-circle {
-  width: 120px;
-  height: 120px;
+  width: 130px;
+  height: 130px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   color: white;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+  animation: float 4s ease-in-out infinite;
 }
 
 .score-value {
-  font-size: 2.5rem;
-  font-weight: 700;
+  font-size: 2.75rem;
+  font-weight: 800;
   line-height: 1;
 }
 
 .score-label {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   opacity: 0.9;
+  font-weight: 500;
 }
 
 .summary-details {
@@ -472,13 +484,14 @@ watch(() => route.params.id, (newId, oldId) => {
 .summary-details h3 {
   margin: 0 0 0.5rem 0;
   font-size: 1.5rem;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
 .summary-text {
   color: var(--text-secondary);
   line-height: 1.6;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 .summary-stats {
@@ -489,21 +502,25 @@ watch(() => route.params.id, (newId, oldId) => {
 .stat-item {
   display: flex;
   flex-direction: column;
+  gap: 0.25rem;
 }
 
 .stat-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
 }
 
 .stat-value {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.35rem;
+  font-weight: 700;
   color: var(--primary-color);
 }
 
 .radar-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .radar-chart {
@@ -514,7 +531,8 @@ watch(() => route.params.id, (newId, oldId) => {
   display: flex;
   justify-content: center;
   gap: 2rem;
-  margin-top: 1rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
 }
 
 .legend-item {
@@ -526,28 +544,28 @@ watch(() => route.params.id, (newId, oldId) => {
 .legend-color {
   width: 12px;
   height: 12px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .legend-name {
-  font-size: 0.875rem;
+  font-size: 0.825rem;
   color: var(--text-secondary);
 }
 
 .legend-score {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
 .detailed-assessment {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .assessment-list {
@@ -557,9 +575,10 @@ watch(() => route.params.id, (newId, oldId) => {
 }
 
 .assessment-item {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border-color);
-  line-height: 1.5;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--border-light);
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
 .assessment-item:last-child {
@@ -567,12 +586,12 @@ watch(() => route.params.id, (newId, oldId) => {
 }
 
 .suggestions-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .suggestion-item {
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--border-color);
+  padding: 1.125rem 0;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .suggestion-item:last-child {
@@ -583,24 +602,25 @@ watch(() => route.params.id, (newId, oldId) => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.625rem;
 }
 
 .suggestion-index {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background-color: var(--primary-color);
+  background: var(--primary-color);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 800;
+  flex-shrink: 0;
 }
 
 .suggestion-title {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
@@ -608,16 +628,16 @@ watch(() => route.params.id, (newId, oldId) => {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 0.5rem;
-  padding-left: 2.25rem;
+  padding-left: 2.375rem;
 }
 
 .suggestion-resources {
-  padding-left: 2.25rem;
-  font-size: 0.875rem;
+  padding-left: 2.375rem;
+  font-size: 0.85rem;
 }
 
 .resources-label {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
@@ -626,7 +646,7 @@ watch(() => route.params.id, (newId, oldId) => {
 }
 
 .interview-records {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .record-answer {
@@ -638,22 +658,29 @@ watch(() => route.params.id, (newId, oldId) => {
 .record-scores {
   display: flex;
   gap: 0.5rem;
-  margin: 0.5rem 0;
+  margin: 0.625rem 0;
+  flex-wrap: wrap;
 }
 
 .record-feedback {
   color: var(--text-primary);
   font-style: italic;
   border-left: 3px solid var(--primary-color);
-  padding-left: 0.75rem;
-  margin: 0.5rem 0;
+  padding-left: 0.875rem;
+  margin: 0.625rem 0;
+  line-height: 1.55;
 }
 
 .action-buttons {
   display: flex;
   justify-content: center;
   gap: 1rem;
-  padding: 2rem 0;
+  padding: 2.5rem 0;
+}
+
+.action-buttons .el-button {
+  font-weight: 600;
+  border-radius: var(--radius-lg);
 }
 
 .loading-state {
@@ -661,5 +688,44 @@ watch(() => route.params.id, (newId, oldId) => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 0.75rem 1rem;
+  }
+
+  .report-container {
+    padding: 1rem;
+  }
+
+  .summary-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 1.5rem;
+    padding: 1.25rem;
+  }
+
+  .summary-stats {
+    justify-content: center;
+  }
+
+  .score-circle {
+    width: 100px;
+    height: 100px;
+  }
+
+  .score-value {
+    font-size: 2rem;
+  }
+
+  .radar-chart {
+    height: 300px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    align-items: center;
+  }
 }
 </style>

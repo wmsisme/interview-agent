@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import eventlet
+eventlet.monkey_patch()
 import os
 import sys
 import logging
@@ -32,14 +34,12 @@ def main():
     
     # 运行应用
     if app.config.get('DEBUG', False):
-        # 开发模式 - 使用SocketIO
         socketio.run(
             app,
             host=host,
             port=port,
-            debug=True,
-            use_reloader=False,
-            allow_unsafe_werkzeug=True
+            debug=False,
+            use_reloader=False
         )
     else:
         # 生产模式 - 使用gunicorn with eventlet
