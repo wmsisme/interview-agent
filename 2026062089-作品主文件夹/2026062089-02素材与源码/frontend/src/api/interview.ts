@@ -44,30 +44,11 @@ export const submitAnswer = (interviewId: number, questionId: number, answerText
   })
 }
 
-export const submitAudioAnswer = (interviewId: number, questionId: number, audioBlob: Blob) => {
-  const formData = new FormData()
-  formData.append('interviewId', interviewId.toString())
-  formData.append('questionId', questionId.toString())
-  formData.append('audio', audioBlob, 'recording.webm')
-  return request.post<EvaluationResult>('/interview/answer/audio', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000
-  })
-}
-
 export const endInterview = (interviewId: number, conversation?: { role: string; content: string }[]) => {
   return request.post(`/interview/end/${interviewId}`, {
     conversation: conversation || []
   }, {
     timeout: 90000
-  })
-}
-
-export const saveConversation = (interviewId: number, conversation: { role: string; content: string }[]) => {
-  return request.post(`/interview/conversation/${interviewId}`, {
-    conversation
-  }, {
-    timeout: 30000
   })
 }
 

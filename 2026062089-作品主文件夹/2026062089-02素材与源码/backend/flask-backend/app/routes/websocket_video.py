@@ -355,26 +355,20 @@ class VideoInterviewWebSocketHandler:
                         'data': user_text,
                         'sessionId': self.session_id
                     })
-                    if hasattr(interview_service, 'save_answer'):
-                        interview_service.save_answer(
-                            interview_id=self.interview_id,
-                            question_text="",
-                            answer_text=user_text,
-                            audio_url=None
-                        )
-                    else:
-                        logger.info("[WebSocket] InterviewService未实现save_answer，跳过用户回答落库")
+                    interview_service.save_answer(
+                        interview_id=self.interview_id,
+                        question_text="",
+                        answer_text=user_text,
+                        audio_url=None
+                    )
             
             elif event_type == 'ai_response' and self.interview_id:
                 ai_text = data.get('text', '')
                 if ai_text:
-                    if hasattr(interview_service, 'save_question'):
-                        interview_service.save_question(
-                            interview_id=self.interview_id,
-                            question_text=ai_text
-                        )
-                    else:
-                        logger.info("[WebSocket] InterviewService未实现save_question，跳过AI问题落库")
+                    interview_service.save_question(
+                        interview_id=self.interview_id,
+                        question_text=ai_text
+                    )
             
         except Exception as e:
             logger.error(f"处理面试事件失败: {str(e)}")

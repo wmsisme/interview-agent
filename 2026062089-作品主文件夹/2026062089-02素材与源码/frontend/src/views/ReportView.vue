@@ -368,11 +368,9 @@ const downloadReport = async () => {
 }
 
 const restartInterview = () => {
-  if (reportData.value) {
-    router.push(`/interview?position=${reportData.value.positionName.toLowerCase().replace(/ /g, '_')}`)
-  } else {
-    router.push('/')
-  }
+  // 历史写法跳转 /interview?position=xxx，但该路由并不存在（会命中 404 兜底回首页）。
+  // 这里直接回首页重新选岗位，由首页按既有流程进入 /interview/video。
+  router.push('/')
 }
 
 onMounted(() => {

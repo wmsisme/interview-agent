@@ -22,8 +22,10 @@ request.interceptors.request.use(
 
 request.interceptors.response.use(
   (response: AxiosResponse) => {
+    // blob（如 PDF 下载）保持完整 response 返回，调用方统一用 response.data 取 Blob。
+    // 历史写法直接 return response.data，调用方再读 response.data 会拿到 undefined。
     if (response.config.responseType === 'blob') {
-      return response.data
+      return response
     }
     
     const res = response.data

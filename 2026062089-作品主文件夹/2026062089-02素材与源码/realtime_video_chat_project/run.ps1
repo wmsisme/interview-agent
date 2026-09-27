@@ -1,4 +1,4 @@
-# 实时视频对话项目 - PowerShell启动脚本
+﻿# 实时视频对话项目 - PowerShell启动脚本
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   实时视频对话项目 - 启动脚本" -ForegroundColor Cyan
@@ -6,31 +6,49 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # 检查Python是否安装
-try {
-    $pythonVersion = python --version 2>&1
-    Write-Host "✅ Python环境检测通过: $pythonVersion" -ForegroundColor Green
-} catch {
+# 注意：外部命令失败只会设置 $LASTEXITCODE，不会抛出异常，所以不能用 try/catch 判定
+$pythonVersion = & python --version 2>&1
+if ($LASTEXITCODE -ne 0 -or -not $pythonVersion) {
     Write-Host "❌ 未检测到Python，请先安装Python 3.8或更高版本" -ForegroundColor Red
     Write-Host "下载地址：https://www.python.org/downloads/" -ForegroundColor Yellow
     Read-Host "按Enter键退出"
     exit 1
 }
+Write-Host "✅ Python环境检测通过: $pythonVersion" -ForegroundColor Green
 
 # 检查依赖是否安装
+# 依赖表按 realtime_video_chat.py 的实际 import 推导：
+#   import dashscope / import cv2 / import numpy / import pyaudio / from PIL import Image
+$dependencies = @(
+    @{ Name = "dashscope"; Module = "dashscope";
+       Hint = "pip install dashscope>=1.23.9" }
+    @{ Name = "opencv-python"; Module = "cv2";
+       Hint = "pip install opencv-python" }
+    @{ Name = "pyaudio"; Module = "pyaudio";
+       Hint = "pip install pyaudio（Windows 上失败可试：pip install pipwin 然后 pipwin install pyaudio）" }
+    @{ Name = "numpy"; Module = "numpy";
+       Hint = "pip install numpy" }
+    @{ Name = "pillow"; Module = "PIL";
+       Hint = "pip install pillow" }
+)
+
 Write-Host "检查依赖包安装状态..." -ForegroundColor Gray
-$dependencies = @("dashscope", "cv2", "pyaudio")
 $missingDeps = @()
 
 foreach ($dep in $dependencies) {
-    try {
-        python -c "import $dep" 2>&1 | Out-Null
-    } catch {
+    # 通过 $LASTEXITCODE 判定：import 失败是非零退出码，不是异常
+    & python -c "import $($dep.Module)" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ("  ✗ {0}（模块名 {1}）未安装" -f $dep.Name, $dep.Module) -ForegroundColor Red
         $missingDeps += $dep
+    } else {
+        Write-Host ("  ✓ {0}" -f $dep.Name) -ForegroundColor Green
     }
 }
 
 if ($missingDeps.Count -gt 0) {
-    Write-Host "⚠️  检测到未安装的依赖包: $($missingDeps -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "⚠️  检测到未安装的依赖包: $(($missingDeps | ForEach-Object { $_.Name }) -join ', ')" -ForegroundColor Yellow
     Write-Host ""
     
     $choice = Read-Host "是否安装依赖包？(Y/N)"
@@ -41,6 +59,10 @@ if ($missingDeps.Count -gt 0) {
         if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ 依赖包安装失败" -ForegroundColor Red
             Write-Host "请手动运行：pip install -r requirements.txt" -ForegroundColor Yellow
+            Write-Host "或按包单独安装：" -ForegroundColor Yellow
+            foreach ($dep in $missingDeps) {
+                Write-Host ("  " + $dep.Hint) -ForegroundColor Cyan
+            }
             Read-Host "按Enter键退出"
             exit 1
         }
@@ -49,6 +71,9 @@ if ($missingDeps.Count -gt 0) {
     } else {
         Write-Host "请手动运行以下命令安装依赖：" -ForegroundColor Yellow
         Write-Host "pip install -r requirements.txt" -ForegroundColor Cyan
+        foreach ($dep in $missingDeps) {
+            Write-Host ("  或 " + $dep.Hint) -ForegroundColor Cyan
+        }
         Read-Host "按Enter键退出"
         exit 1
     }

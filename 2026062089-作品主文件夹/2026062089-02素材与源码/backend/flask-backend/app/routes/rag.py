@@ -76,13 +76,12 @@ def get_collections():
                     })
             except Exception as e:
                 logger.error(f"获取集合列表失败: {e}")
-                # 返回硬编码的集合列表作为备选
-                collections = [
-                    {'name': 'java_backend', 'count': 76},
-                    {'name': 'web_frontend', 'count': 46},
-                    {'name': 'bigdata_engineer', 'count': 83},
-                    {'name': 'fullstack_engineer', 'count': 110}
-                ]
+                # 读取失败时如实返回错误，不再返回硬编码的假集合数量
+                return error(f'读取向量库集合失败: {e}', 500, {
+                    'enabled': True,
+                    'collections': [],
+                    'degraded': True
+                })
         
         return success({'collections': collections})
     except Exception as e:

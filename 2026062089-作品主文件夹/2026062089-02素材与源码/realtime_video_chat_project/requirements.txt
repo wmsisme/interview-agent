@@ -4,5 +4,3 @@ pyaudio
 opencv-python
 pillow
 numpy
-aiohttp
-asyncio

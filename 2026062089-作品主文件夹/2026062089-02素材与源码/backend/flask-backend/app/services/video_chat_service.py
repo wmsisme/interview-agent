@@ -6,9 +6,17 @@ import asyncio
 import threading
 import time
 import queue
-import cv2
+# cv2 / Pillow 只在 prepare_video_frame() 里用到，做成可选依赖：
+# 缺 opencv-python 时不该让整个视频面试链路（本项目核心功能）在导入阶段就整体失败。
+try:
+    import cv2
+except ImportError:  # pragma: no cover - 环境缺 opencv 时降级
+    cv2 = None
 import numpy as np
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:  # pragma: no cover - 环境缺 pillow 时降级
+    Image = None
 import io
 from typing import Dict, List, Optional, Callable, Any
 from dashscope.audio.qwen_omni import OmniRealtimeConversation, OmniRealtimeCallback, MultiModality, AudioFormat
@@ -781,6 +789,9 @@ class VideoInterviewSession:
         
     def prepare_video_frame(self, frame: np.ndarray) -> Optional[bytes]:
         """准备视频帧数据，压缩为JPEG格式"""
+        if cv2 is None or Image is None:
+            logger.error("[VideoChat] prepare_video_frame 需要 opencv-python 与 pillow，当前环境缺失，已跳过")
+            return None
         try:
             # 转换BGR到RGB
             if len(frame.shape) == 3 and frame.shape[2] == 3:
@@ -835,12 +846,13 @@ class VideoInterviewSession:
         self.ai_speaking_done_at = 0.0
         self.ai_speaking_started_at = 0.0
         if self.conversation:
+            # OmniRealtimeConversation 只有 close()，没有 stop()；
+            # 历史写法调 stop() 每次都会抛 AttributeError 并打到日志里。
             try:
-                self.conversation.stop()
-            except Exception as e:
-                logger.warning(f"[VideoChat] 停止会话时出错: {str(e)}")
-            finally:
                 self.conversation.close()
+            except Exception as e:
+                logger.warning(f"[VideoChat] 关闭会话时出错: {str(e)}")
+            finally:
                 self.is_active = False
                 logger.info(f"[VideoChat] 会话已停止: {self.session_id}")
                 

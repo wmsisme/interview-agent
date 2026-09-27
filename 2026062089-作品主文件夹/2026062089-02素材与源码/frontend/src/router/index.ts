@@ -31,7 +31,8 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
-      component: () => import('../views/HomeView.vue'),
+      // 复用首页（HomeView 已在文件顶部静态导入，这里不再重复动态导入）
+      component: HomeView,
     },
   ],
 })

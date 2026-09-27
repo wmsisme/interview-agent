@@ -1,0 +1,27 @@
+# 仓库级忽略规则（各子目录另有自己的 .gitignore）
+# 目的：大文件与运行产物不入库——GitHub 单文件上限 100MB，
+# 作品演示视频/压缩包按赛制要求走外部公开链接提交，不放进 git。
+
+# ---- 媒体与大文件 ----
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.zip
+*.7z
+*.rar
+
+# ---- Python / Node 依赖与产物 ----
+venv/
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+*.log
+
+# ---- 本地运行数据与构建产物 ----
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+dist/

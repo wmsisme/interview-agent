@@ -282,10 +282,19 @@ class InterviewService:
             record = InterviewRecord.query.get(interview_id)
             if not record:
                 raise ValueError("面试记录不存在")
-            
+
+            # 幂等保护：前端「结束面试」会先 emit stop_interview、紧接着 disconnect，
+            # 两个入口各触发一次 end_interview。重复生成报告既浪费 LLM 调用，
+            # 又会与长时间写事务叠加把 SQLite 写锁顶死（曾复现 database is locked）。
+            if record.report:
+                logger.info(f"面试 {interview_id} 已生成过报告，跳过重复生成")
+                return record.to_dict()
+
             if record.end_time is None:
                 record.end_time = datetime.utcnow()
-            
+            # 先把 end_time 落库提交，避免在长达十余秒的 LLM 报告生成期间一直持有写事务
+            db.session.commit()
+
             report = self.generate_report(interview_id)
             import json
             record.report = json.dumps(report, ensure_ascii=False)
